@@ -1,11 +1,23 @@
 import { Routes, Route } from "react-router-dom"
+import Navbar from "./components/Navbar"
+import Home from "./pages/Home"
+import Login from "./pages/Login"
+import Register from "./pages/Register"
+import Watchlist from "./pages/Watchlist"
+import Profile from "./pages/Profile"
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<h1>Home Page</h1>} />
-      <Route path="/login" element={<h1>Login Page</h1>} />
-    </Routes>
+    <>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/watchlist" element={<Watchlist />} />
+        <Route path="/profile" element={<Profile />} />
+      </Routes>
+    </>
   )
 }
 
