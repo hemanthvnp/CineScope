@@ -1,0 +1,104 @@
+.cinema-wrapper {
+  position: relative;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: url("https://images.unsplash.com/photo-1502136969935-8d0711b58df1")
+    center/cover no-repeat;
+  animation: slowZoom 20s ease-in-out infinite alternate;
+}
+
+@keyframes slowZoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.03); }
+}
+
+/* Overlay */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    rgba(0, 0, 0, 0.85),
+    rgba(0, 0, 0, 0.95)
+  );
+}
+
+/* Grain */
+.grain {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+  opacity: 0.05;
+}
+
+/* Particles */
+.particles::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(white 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: 0.03;
+  animation: floatParticles 60s linear infinite;
+}
+
+@keyframes floatParticles {
+  from { transform: translateY(0); }
+  to { transform: translateY(-200px); }
+}
+
+/* Glass Card */
+.cinema-card {
+  position: relative;
+  background: rgba(15, 15, 15, 0.85);
+  backdrop-filter: blur(12px);
+  padding: 2.5rem;
+  border-radius: 14px;
+  width: 380px;
+  text-align: left;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.register-input {
+  width: 100%;
+  padding: 0.8rem 0;
+  margin-bottom: 1.5rem;
+  border: none;
+  border-bottom: 1px solid #444;
+  background: transparent;
+  color: white;
+  outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.3s ease;
+}
+
+.register-input:focus {
+  border-bottom: 1px solid #e50914;
+}
+
+.register-button {
+  width: 100%;
+  padding: 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #e50914;
+  background: transparent;
+  color: #e50914;
+  font-weight: 500;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.register-button:hover {
+  background: #e50914;
+  color: white;
+}

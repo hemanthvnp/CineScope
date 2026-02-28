@@ -2,5 +2,28 @@ body {
   margin: 0;
   background-color: #0f0f0f;
   color: white;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', sans-serif;
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+}
+
+.gold-accent {
+  color: #f5c518;
+}
+
+.gold-button {
+  background-color: #f5c518;
+  border: none;
+  color: black;
+  padding: 0.7rem 1.4rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.gold-button:hover {
+  opacity: 0.85;
 }
