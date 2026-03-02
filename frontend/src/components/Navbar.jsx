@@ -5,16 +5,23 @@ const AUTH_STORAGE_KEY = "cinescope-auth"
 const TOKEN_STORAGE_KEY = "cinescope-token"
 
 const getAuthState = () => {
-  return localStorage.getItem(AUTH_STORAGE_KEY) === "true" && Boolean(localStorage.getItem(TOKEN_STORAGE_KEY))
+  return (
+    localStorage.getItem(AUTH_STORAGE_KEY) === "true" &&
+    Boolean(localStorage.getItem(TOKEN_STORAGE_KEY))
+  )
 }
 
-function Navbar() {
+function Navbar({ onSearch, onFilter }) {
   const location = useLocation()
   const navigate = useNavigate()
+
   const [menuOpen, setMenuOpen] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => getAuthState()
-  )
+  const [isAuthenticated, setIsAuthenticated] = useState(() => getAuthState())
+
+  // search & filter states
+  const [search, setSearch] = useState("")
+  const [year, setYear] = useState("")
+  const [genre, setGenre] = useState("")
 
   useEffect(() => {
     setIsAuthenticated(getAuthState())
@@ -27,7 +34,6 @@ function Navbar() {
     }
 
     window.addEventListener("storage", handleStorage)
-
     return () => window.removeEventListener("storage", handleStorage)
   }, [])
 
@@ -39,12 +45,55 @@ function Navbar() {
     navigate("/")
   }
 
+  const handleSearchChange = (e) => {
+    const value = e.target.value
+    setSearch(value)
+    onSearch && onSearch(value)
+  }
+
+  const applyFilters = () => {
+    onFilter && onFilter({ year, genre })
+  }
+
   return (
     <nav className="site-nav">
       <Link to={isAuthenticated ? "/home" : "/"} className="site-logo-link">
         <h2 className="site-logo">CineScope</h2>
       </Link>
 
+      {/* SEARCH + FILTERS (only when logged in & on home) */}
+      {isAuthenticated && location.pathname === "/home" && (
+        <div className="nav-search">
+          <input
+            type="text"
+            placeholder="Search movies..."
+            value={search}
+            onChange={handleSearchChange}
+          />
+
+          <input
+            type="number"
+            placeholder="Year"
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+          />
+
+          <select
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+          >
+            <option value="">Genre</option>
+            <option value="Action">Action</option>
+            <option value="Comedy">Comedy</option>
+            <option value="Drama">Drama</option>
+            <option value="Thriller">Thriller</option>
+          </select>
+
+          <button onClick={applyFilters}>Apply</button>
+        </div>
+      )}
+
+      {/* PUBLIC LINKS */}
       {!isAuthenticated && (
         <div className="site-links">
           <Link to="/" className="site-link">About</Link>
@@ -53,6 +102,7 @@ function Navbar() {
         </div>
       )}
 
+      {/* AUTHENTICATED MENU */}
       {isAuthenticated && (
         <>
           <button
@@ -73,15 +123,19 @@ function Navbar() {
 
           <aside className={`side-menu ${menuOpen ? "open" : ""}`}>
             <h3>Menu</h3>
+
             <Link to="/home" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Home
             </Link>
+
             <Link to="/watchlist" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Watchlist
             </Link>
+
             <Link to="/profile" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Profile
             </Link>
+
             <button
               type="button"
               className="side-menu-button"
