@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import HeroBanner from "../components/HeroBanner"
 import RecommendationRow from "../components/RecommendationRow"
 import MovieRow from "../components/MovieRow"
+import Navbar from "../components/Navbar"
 import api from "../api/axios"
 import {
   getHybridRecommendations,
@@ -45,7 +46,11 @@ function Home() {
   const [loadingUpcoming, setLoadingUpcoming] = useState(true)
   const [loadingLanguage, setLoadingLanguage] = useState(false)
 
-  // Intersection observer for scroll reveal
+  // 🔍 search & filter state (from commit 944311e)
+  const [searchText, setSearchText] = useState("")
+  const [filters, setFilters] = useState({ year: "", genre: "" })
+
+  /* ------------------ scroll animation ------------------ */
   useEffect(() => {
     const nodes = document.querySelectorAll(".reveal-on-scroll")
     const observer = new IntersectionObserver(
@@ -64,7 +69,7 @@ function Home() {
     return () => observer.disconnect()
   })
 
-  // Fetch user profile
+  /* ------------------ profile fetch ------------------ */
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -92,6 +97,7 @@ function Home() {
     fetchProfile()
   }, [])
 
+  /* ------------------ recommendation fetches ------------------ */
   // Fetch hybrid recommendations
   useEffect(() => {
     if (!profile?.id) return
@@ -196,12 +202,50 @@ function Home() {
     fetchLanguageMovies()
   }, [profile?.preferredLanguage])
 
+  /* ------------------ Navbar handlers ------------------ */
+  const handleSearch = (text) => {
+    setSearchText(text)
+  }
+
+  const handleFilter = ({ year, genre }) => {
+    setFilters({ year, genre })
+  }
+
+  /* ------------------ data filtering utility ------------------ */
+  const applyFilters = (movies) => {
+    return movies.filter((movie) => {
+      // search by title
+      if (searchText && !movie.title?.toLowerCase().includes(searchText.toLowerCase())) {
+        return false
+      }
+
+      // filter by year
+      if (filters.year) {
+        const movieYear = (movie.release_date || movie.year || "")?.split("-")[0]
+        if (movieYear !== filters.year) return false
+      }
+
+      // filter by genre
+      if (filters.genre && movie.genre_ids) {
+        const genreMap = { Action: 28, Comedy: 35, Drama: 18, Thriller: 53 }
+        if (!movie.genre_ids.includes(genreMap[filters.genre])) {
+          return false
+        }
+      }
+      return true
+    })
+  }
+
+  /* ------------------ profile text ------------------ */
   const displayName = (profile?.screenName || profile?.name || "Cinephile").trim()
   const nickname = displayName.replace(/^@/, "").replace(/\s+/g, "")
   const signatureLine = profile?.signatureLine?.trim() || "Start by rating a film you love and we'll shape your next perfect watch."
 
   return (
     <div>
+      {/* 🔝 Navbar with search + filters */}
+      <Navbar onSearch={handleSearch} onFilter={handleFilter} />
+
       <section className="home-welcome reveal-on-scroll">
         <p className="home-welcome-kicker">Your CineScope Space</p>
         <h1>Hi {nickname}, start with your vibe.</h1>
@@ -214,7 +258,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🎯 Recommended For You"
-          movies={hybridRecs}
+          movies={applyFilters(hybridRecs)}
           loading={loadingHybrid}
           emptyMessage="Rate some movies to get personalized recommendations!"
           showExplanation={true}
@@ -225,7 +269,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🎬 In Theatres Now"
-          movies={nowPlaying}
+          movies={applyFilters(nowPlaying)}
           loading={loadingNowPlaying}
           emptyMessage="Could not load now playing movies."
           showExplanation={false}
@@ -237,7 +281,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title={`🌐 Popular in ${LANGUAGE_LABELS[profile.preferredLanguage] || profile.preferredLanguage.toUpperCase()}`}
-            movies={languageMovies}
+            movies={applyFilters(languageMovies)}
             loading={loadingLanguage}
             emptyMessage="No movies found in your preferred language."
             showExplanation={false}
@@ -249,7 +293,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🔥 Trending This Week"
-          movies={trendingMovies}
+          movies={applyFilters(trendingMovies)}
           loading={loadingTrending}
           emptyMessage="Could not load trending movies."
           showExplanation={false}
@@ -261,7 +305,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title="❤️ Because You Liked..."
-            movies={becauseYouLiked}
+            movies={applyFilters(becauseYouLiked)}
             loading={false}
             showExplanation={true}
           />
@@ -273,7 +317,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title="🎭 Based on Your Favorite Genres"
-            movies={genreRecs}
+            movies={applyFilters(genreRecs)}
             loading={false}
             showExplanation={true}
           />
@@ -284,7 +328,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🍿 Coming Soon"
-          movies={upcoming}
+          movies={applyFilters(upcoming)}
           loading={loadingUpcoming}
           emptyMessage="Could not load upcoming movies."
           showExplanation={false}
