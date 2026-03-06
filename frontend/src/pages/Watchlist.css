@@ -1,0 +1,240 @@
+.page-shell {
+  min-height: 75vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;   /* centers vertically */
+
+  font-family: "Segoe UI", Arial, sans-serif;
+
+  background: radial-gradient(circle at top, #1c1c1c, #000);
+}
+
+
+/* Main card */
+
+.watchlist-card {
+
+  width: 820px;
+  padding: 35px;
+  border-radius: 16px;
+  background: rgba(20,20,20,0.85);
+  border: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.7);
+
+}
+
+
+/* Header */
+
+.header {
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+
+/* Title */
+
+.title-section h1 {
+
+  margin: 0;
+  font-size: 40px;
+  color: gold;
+
+}
+
+.title-section p {
+
+  margin-top: 6px;
+  color: #aaa;
+  font-size: 16px;
+
+}
+
+
+/* Add button */
+
+.add-btn {
+
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  border: none;
+  font-size: 30px;
+  font-weight: bold;
+  color: black;
+  background: linear-gradient(145deg, gold, orange);
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(255,215,0,0.4);
+  transition: all 0.3s;
+
+}
+
+.add-btn:hover {
+
+  transform: scale(1.15) rotate(90deg);
+
+}
+
+
+/* Input area */
+
+.input-section {
+
+  display: flex;
+  margin-top: 25px;
+  gap: 10px;
+
+}
+
+.input-section input {
+
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #111;
+  color: white;
+
+}
+
+.input-section input:focus {
+
+  outline: none;
+  border-color: gold;
+
+}
+
+.input-section button {
+
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  background: gold;
+  cursor: pointer;
+
+}
+
+.input-section button:hover {
+
+  background: orange;
+
+}
+
+/* Empty state */
+
+.empty {
+
+  text-align: center;
+  margin-top: 40px;
+  color: #777;
+  font-size: 18px;
+
+}
+
+
+/* Movie list */
+
+.movie-list {
+
+  list-style: none;
+  padding: 0;
+  margin-top: 30px;
+
+}
+
+
+/* Movie item */
+
+.movie-item {
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,0.05);
+  transition: 0.25s;
+
+}
+
+.movie-item:hover {
+
+  background: #222;
+  transform: translateY(-3px);
+
+}
+
+.movie-item span {
+
+  font-size: 17px;
+
+}
+
+
+/* Buttons */
+
+.buttons {
+
+  display: flex;
+  gap: 8px;
+
+}
+
+.buttons button {
+
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+
+}
+
+
+/* Confirm */
+
+.confirm {
+
+  background: #1db954;
+  color: white;
+
+}
+
+.confirm:hover {
+
+  transform: scale(1.15);
+
+}
+
+
+/* Delete */
+
+.delete {
+
+  background: #ff3b3b;
+  color: white;
+
+}
+
+.delete:hover {
+
+  transform: scale(1.15);
+
+}
+
+
+/* Confirmed movie */
+
+.confirmed {
+
+  color: #2df76c;
+  font-weight: 600;
+
+}
