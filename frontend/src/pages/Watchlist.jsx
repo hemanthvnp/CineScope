@@ -1,28 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import "./Watchlist.css";
 
 export default function Watchlist() {
   const [movies, setMovies] = useState([]);
-  const [movieName, setMovieName] = useState("");
-  const [showInput, setShowInput] = useState(false);
+  const location = useLocation();
 
-  const addMovie = () => {
-    if (movieName.trim() === "") return;
-
-    setMovies([...movies, { name: movieName, confirmed: false }]);
-    setMovieName("");
-    setShowInput(false);
+  // Function to load movies from localStorage
+  const loadMovies = () => {
+    const stored = localStorage.getItem('cinescope-watchlist');
+    setMovies(stored ? JSON.parse(stored) : []);
   };
 
-  const confirmMovie = (index) => {
-    const updated = [...movies];
-    updated[index].confirmed = true;
-    setMovies(updated);
-  };
+  // Load movies whenever this page is navigated to
+  useEffect(() => {
+    loadMovies();
+  }, [location]);
 
-  const deleteMovie = (index) => {
-    const updated = movies.filter((_, i) => i !== index);
+  // Remove movie from watchlist
+  const deleteMovie = (id) => {
+    const updated = movies.filter((movie) => movie.id !== id);
     setMovies(updated);
+    localStorage.setItem('cinescope-watchlist', JSON.stringify(updated));
   };
 
   return (
@@ -32,80 +31,45 @@ export default function Watchlist() {
 
         {/* Header */}
         <div className="header">
-
           <div className="title-section">
             <h1>Watchlist</h1>
             <p>Save films you want to watch next in one curated shelf.</p>
           </div>
-
-          <button
-            className="add-btn"
-            onClick={() => setShowInput(!showInput)}
-          >
-            +
-          </button>
-
         </div>
-
-        {/* Input Section */}
-        {showInput && (
-          <div className="input-section">
-
-            <input
-              type="text"
-              placeholder="Enter movie name..."
-              value={movieName}
-              onChange={(e) => setMovieName(e.target.value)}
-            />
-
-            <button onClick={addMovie}>Add Movie</button>
-
-          </div>
-        )}
 
         {/* Empty state */}
         {movies.length === 0 && (
           <div className="empty">
             🎬 Your watchlist is empty  
             <br />
-            Click the <b>+</b> button to add movies.
+            Add movies from the home page.
           </div>
         )}
 
-        {/* Movie List */}
-        <ul className="movie-list">
-
-          {movies.map((movie, index) => (
-            <li key={index} className="movie-item">
-
-              <span className={movie.confirmed ? "confirmed" : ""}>
-                {movie.name}
-              </span>
-
-              <div className="buttons">
-
-                {!movie.confirmed && (
-                  <button
-                    className="confirm"
-                    onClick={() => confirmMovie(index)}
-                  >
-                    ✓
-                  </button>
-                )}
-
-                <button
-                  className="delete"
-                  onClick={() => deleteMovie(index)}
-                >
-                  ✕
-                </button>
-
-              </div>
-
-            </li>
+        {/* Movie Grid */}
+        <div className="watchlist-movie-grid">
+          {movies.map((movie) => (
+            <div key={movie.id} className="watchlist-movie-item">
+              {movie.poster_path ? (
+                <img
+                  src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
+                  alt={movie.title}
+                  className="watchlist-poster"
+                />
+              ) : (
+                <div className="watchlist-poster-placeholder">No Image</div>
+              )}
+              <h3 className="watchlist-movie-title">{movie.title}</h3>
+              <button
+                className="watchlist-delete-btn"
+                onClick={() => deleteMovie(movie.id)}
+                title="Remove from Watchlist"
+              >
+                ✕ Remove
+              </button>
+            </div>
           ))}
-
-        </ul>
+        </div>
 
       </div>
 

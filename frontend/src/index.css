@@ -1,3 +1,59 @@
+/* Add styles for improved add-to-watchlist button layout */
+.add-watchlist-btn-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+.add-watchlist-btn {
+  font-size: 1rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 24px;
+  background: #222;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.add-watchlist-btn:hover {
+  background: #ff3b30;
+  color: #fff;
+}
+.add-watchlist-btn.added-feedback {
+  background: #1db954;
+  color: #fff;
+  transition: background 0.4s ease;
+}
+.add-watchlist-btn.added-feedback:hover {
+  background: #16a34a;
+}
+/* Add hover overlay for add-to-watchlist button */
+.movie-poster-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.add-watchlist-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.movie-poster-wrapper:hover .add-watchlist-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+.add-watchlist-btn:hover {
+  background: #ff3b30;
+  color: #fff;
+}
 :root {
   color-scheme: dark;
   --bg: #080808;
@@ -846,6 +902,20 @@ p {
   transform: translateY(-4px) scale(1.02);
   border-color: rgba(255, 59, 48, 0.75);
   box-shadow: 0 14px 24px rgba(0, 0, 0, 0.42);
+}
+
+.movie-title {
+  width: 160px;
+  font-size: 0.85rem;
+  color: #fff;
+  margin: 0.6rem 0 0 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: 500;
 }
 
 .skeleton-title {
