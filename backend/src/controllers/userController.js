@@ -215,9 +215,42 @@ const getProfile = async (req, res) => {
 	}
 }
 
+const updateProfile = async (req, res) => {
+	try {
+		// Whitelist of updatable fields
+		const allowed = ["screenName", "signatureLine", "favoriteGenre", "favoriteEra", "preferredLanguage"]
+		const updates = {}
+
+		for (const field of allowed) {
+			if (req.body[field] !== undefined) {
+				updates[field] = String(req.body[field]).trim()
+			}
+		}
+
+		if (Object.keys(updates).length === 0) {
+			return res.status(400).json({ message: "No valid fields to update." })
+		}
+
+		const user = await User.findByIdAndUpdate(
+			req.auth.userId,
+			{ $set: updates },
+			{ new: true, runValidators: true }
+		).select("-password")
+
+		if (!user) {
+			return res.status(404).json({ message: "User not found." })
+		}
+
+		return res.status(200).json({ message: "Profile updated.", user })
+	} catch (error) {
+		return res.status(500).json({ message: "Failed to update profile." })
+	}
+}
+
 module.exports = {
 	initiateRegistration,
 	verifyRegistrationOtp,
 	loginUser,
-	getProfile
+	getProfile,
+	updateProfile
 }

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+dnspython
+scikit-learn
+scipy
+numpy
+python-dotenv
+requests
