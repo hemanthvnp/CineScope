@@ -2,19 +2,200 @@ const axios = require("axios")
 
 const BASE_URL = "https://api.themoviedb.org/3"
 
-const getTrendingMovies = async () => {
-  const response = await axios.get(
-    `${BASE_URL}/trending/movie/week`,
-    {
-      params: {
-        api_key: process.env.TMDB_API_KEY
-      }
-    }
-  )
+// Create axios instance with timeout and retry config
+const tmdbApi = axios.create({
+  baseURL: BASE_URL,
+  timeout: 10000,
+  headers: {
+    "Accept": "application/json"
+  }
+})
 
-  return response.data.results
+// ── Simple in-memory cache with TTL ──────────────────────────────────
+const _cache = new Map()
+const CACHE_TTL = 10 * 60 * 1000 // 10 minutes
+
+const cacheGet = (key) => {
+  const entry = _cache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    _cache.delete(key)
+    return null
+  }
+  return entry.data
+}
+
+const cacheSet = (key, data) => {
+  _cache.set(key, { data, ts: Date.now() })
+}
+
+// ── Retry wrapper ────────────────────────────────────────────────────
+const fetchWithRetry = async (url, params, retries = 3) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await tmdbApi.get(url, { params })
+      return response
+    } catch (error) {
+      if (i === retries - 1) throw error
+      console.log(`TMDB request failed, retrying... (${i + 1}/${retries})`)
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)))
+    }
+  }
+}
+
+// ── Cached fetch helper ──────────────────────────────────────────────
+const cachedFetch = async (cacheKey, url, params) => {
+  const cached = cacheGet(cacheKey)
+  if (cached) return cached
+
+  const response = await fetchWithRetry(url, {
+    api_key: process.env.TMDB_API_KEY,
+    ...params
+  })
+  const data = response.data
+  cacheSet(cacheKey, data)
+  return data
+}
+
+// ── Public API ───────────────────────────────────────────────────────
+
+const getTrendingMovies = async () => {
+  const data = await cachedFetch("trending", "/trending/movie/week", {})
+  return data.results
+}
+
+const getPopularMovies = async (page = 1) => {
+  const data = await cachedFetch(`popular_${page}`, "/movie/popular", { page })
+  return data
+}
+
+const getNowPlayingMovies = async (page = 1) => {
+  const data = await cachedFetch(`now_playing_${page}`, "/movie/now_playing", { page })
+  return data
+}
+
+const getUpcomingMovies = async (page = 1) => {
+  const data = await cachedFetch(`upcoming_${page}`, "/movie/upcoming", { page })
+  return data
+}
+
+const getTopRatedMovies = async (page = 1) => {
+  const data = await cachedFetch(`top_rated_${page}`, "/movie/top_rated", { page })
+  return data
+}
+
+const getMovieDetails = async (movieId) => {
+  const data = await cachedFetch(`movie_${movieId}`, `/movie/${movieId}`, {})
+  return data
+}
+
+const searchMovies = async (query, page = 1) => {
+  // Don't cache search results as they change frequently
+  const response = await fetchWithRetry("/search/movie", {
+    api_key: process.env.TMDB_API_KEY,
+    query,
+    page
+  })
+  return response.data
+}
+
+const getMoviesByGenre = async (genreId, page = 1) => {
+  const data = await cachedFetch(`genre_${genreId}_${page}`, "/discover/movie", {
+    with_genres: genreId,
+    sort_by: "popularity.desc",
+    page,
+    "vote_count.gte": 50
+  })
+  return data
+}
+
+/**
+ * Get popular movies by language from TMDB
+ */
+const getMoviesByLanguage = async (language, page = 1) => {
+  const data = await cachedFetch(`lang_${language}_${page}`, "/discover/movie", {
+    with_original_language: language,
+    sort_by: "popularity.desc",
+    page,
+    "vote_count.gte": 50
+  })
+
+  return data.results.map(movie => ({
+    movie_id: movie.id,
+    title: movie.title,
+    overview: movie.overview,
+    poster_path: movie.poster_path,
+    vote_average: movie.vote_average,
+    vote_count: movie.vote_count,
+    popularity: movie.popularity,
+    release_date: movie.release_date,
+    language: movie.original_language,
+    genre_ids: movie.genre_ids,
+    source: "tmdb_live"
+  }))
+}
+
+/**
+ * Get top rated movies by language from TMDB
+ */
+const getTopRatedByLanguage = async (language, limit = 20) => {
+  const data = await cachedFetch(`lang_top_${language}`, "/discover/movie", {
+    with_original_language: language,
+    sort_by: "vote_average.desc",
+    "vote_count.gte": 100,
+    page: 1
+  })
+
+  return data.results.slice(0, limit).map(movie => ({
+    movie_id: movie.id,
+    title: movie.title,
+    overview: movie.overview,
+    poster_path: movie.poster_path,
+    vote_average: movie.vote_average,
+    vote_count: movie.vote_count,
+    popularity: movie.popularity,
+    release_date: movie.release_date,
+    language: movie.original_language,
+    genre_ids: movie.genre_ids,
+    source: "tmdb_live"
+  }))
+}
+
+/**
+ * Fetch multiple pages of popular movies (for recommendation engine warm-up)
+ */
+const getPopularMoviesBulk = async (pages = 5) => {
+  const allMovies = []
+  for (let page = 1; page <= pages; page++) {
+    try {
+      const data = await cachedFetch(`popular_${page}`, "/movie/popular", { page })
+      allMovies.push(...data.results)
+    } catch (error) {
+      console.error(`Failed to fetch popular movies page ${page}:`, error.message)
+    }
+  }
+  return allMovies
+}
+
+/**
+ * Get TMDB genre list
+ */
+const getGenreList = async () => {
+  const data = await cachedFetch("genre_list", "/genre/movie/list", {})
+  return data.genres
 }
 
 module.exports = {
-  getTrendingMovies
+  getTrendingMovies,
+  getPopularMovies,
+  getNowPlayingMovies,
+  getUpcomingMovies,
+  getTopRatedMovies,
+  getMovieDetails,
+  searchMovies,
+  getMoviesByGenre,
+  getMoviesByLanguage,
+  getTopRatedByLanguage,
+  getPopularMoviesBulk,
+  getGenreList
 }

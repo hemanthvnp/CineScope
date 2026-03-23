@@ -1,13 +1,13 @@
 {
-  "name": "backend",
+  "name": "api-gateway",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "CineScope API Gateway - Main Backend Service",
+  "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js"
   },
-  "keywords": [],
+  "keywords": ["api-gateway", "movies", "cinescope"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",

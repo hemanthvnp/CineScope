@@ -8,5 +8,6 @@ router.post("/register/initiate", userController.initiateRegistration)
 router.post("/register/verify", userController.verifyRegistrationOtp)
 router.post("/login", userController.loginUser)
 router.get("/me", authMiddleware, userController.getProfile)
+router.put("/me", authMiddleware, userController.updateProfile)
 
 module.exports = router
