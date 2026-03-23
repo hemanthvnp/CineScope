@@ -34,7 +34,7 @@ _is_built = False
 
 # SVD parameters
 N_COMPONENTS = 20    # Number of latent factors to discover
-MIN_RATINGS = 5      # Minimum total ratings needed to build the model
+MIN_RATINGS = 1      # Minimum total ratings needed to build the model
 
 
 def build_svd_model(all_ratings):
