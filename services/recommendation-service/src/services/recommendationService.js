@@ -64,7 +64,7 @@ const getExcludedMovieIds = async (userId, options = {}) => {
   }
 
   const statusFilter = []
-  if (excludeWatched) statusFilter.push("watched", "watchlist", "liked")
+  if (excludeWatched) statusFilter.push("watched", "watchlist", "liked", "disliked")
   if (excludeRated) statusFilter.push("rated")
 
   const watchlist = await UserWatchlist.find({

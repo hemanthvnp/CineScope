@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import HeroBanner from "../components/HeroBanner"
 import RecommendationRow from "../components/RecommendationRow"
 import MovieRow from "../components/MovieRow"
-import Navbar from "../components/Navbar"
+import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 import {
   getHybridRecommendations,
@@ -39,16 +39,18 @@ function Home() {
   const [becauseYouLiked, setBecauseYouLiked] = useState([])
   const [genreRecs, setGenreRecs] = useState([])
   const [languageMovies, setLanguageMovies] = useState([])
-  
+
+  const [searchResults, setSearchResults] = useState([])
+  const [loadingSearch, setLoadingSearch] = useState(false)
+
   const [loadingHybrid, setLoadingHybrid] = useState(true)
   const [loadingTrending, setLoadingTrending] = useState(true)
   const [loadingNowPlaying, setLoadingNowPlaying] = useState(true)
   const [loadingUpcoming, setLoadingUpcoming] = useState(true)
   const [loadingLanguage, setLoadingLanguage] = useState(false)
 
-  // 🔍 search & filter state (from commit 944311e)
-  const [searchText, setSearchText] = useState("")
-  const [filters, setFilters] = useState({ year: "", genre: "" })
+  // Use global search/filter state
+  const { search, year, genre } = useSearchFilter()
 
   /* ------------------ scroll animation ------------------ */
   useEffect(() => {
@@ -202,39 +204,69 @@ function Home() {
     fetchLanguageMovies()
   }, [profile?.preferredLanguage])
 
-  /* ------------------ Navbar handlers ------------------ */
-  const handleSearch = (text) => {
-    setSearchText(text)
-  }
-
-  const handleFilter = ({ year, genre }) => {
-    setFilters({ year, genre })
-  }
-
   /* ------------------ data filtering utility ------------------ */
-  const applyFilters = (movies) => {
+  const applyFilters = (movies, options = {}) => {
+    const { includeSearchText = true } = options
     return movies.filter((movie) => {
-      // search by title
-      if (searchText && !movie.title?.toLowerCase().includes(searchText.toLowerCase())) {
+      // search by title (optional — searchResults already come from server)
+      if (includeSearchText && search && !movie.title?.toLowerCase().includes(search.toLowerCase())) {
         return false
       }
 
       // filter by year
-      if (filters.year) {
+      if (year) {
         const movieYear = (movie.release_date || movie.year || "")?.split("-")[0]
-        if (movieYear !== filters.year) return false
+        if (movieYear !== year) return false
       }
 
       // filter by genre
-      if (filters.genre && movie.genre_ids) {
+      if (genre && movie.genre_ids) {
         const genreMap = { Action: 28, Comedy: 35, Drama: 18, Thriller: 53 }
-        if (!movie.genre_ids.includes(genreMap[filters.genre])) {
+        if (!movie.genre_ids.includes(genreMap[genre])) {
           return false
         }
       }
       return true
     })
   }
+
+  const filteredSearchResults = useMemo(() => {
+    return applyFilters(searchResults, { includeSearchText: false })
+  }, [searchResults, search, year, genre])
+
+  /* ------------------ real search (TMDB) ------------------ */
+  useEffect(() => {
+    const q = (search || "").trim()
+    if (q.length < 2) {
+      setSearchResults([])
+      setLoadingSearch(false)
+      return
+    }
+
+    setLoadingSearch(true)
+    const t = setTimeout(async () => {
+      try {
+        const response = await api.get("/movies/search", { params: { query: q, page: 1 } })
+        const results = response?.data?.results || []
+        const mapped = results
+          .filter((m) => m?.id && m?.title)
+          .slice(0, 30)
+          .map((m) => ({
+            ...m,
+            movie_id: m.id,
+            explanation: { reason: `Search match for "${q}"`, type: "general" }
+          }))
+        setSearchResults(mapped)
+      } catch (err) {
+        console.error("Search failed:", err?.response?.data || err?.message || err)
+        setSearchResults([])
+      } finally {
+        setLoadingSearch(false)
+      }
+    }, 350)
+
+    return () => clearTimeout(t)
+  }, [search])
 
   /* ------------------ profile text ------------------ */
   const displayName = (profile?.screenName || profile?.name || "Cinephile").trim()
@@ -243,9 +275,6 @@ function Home() {
 
   return (
     <div>
-      {/* 🔝 Navbar with search + filters */}
-      <Navbar onSearch={handleSearch} onFilter={handleFilter} />
-
       <section className="home-welcome reveal-on-scroll">
         <p className="home-welcome-kicker">Your CineScope Space</p>
         <h1>Hi {nickname}, start with your vibe.</h1>
@@ -253,6 +282,19 @@ function Home() {
       </section>
 
       <div className="reveal-on-scroll"><HeroBanner /></div>
+
+      {/* 🔎 Search Results */}
+      {(search?.trim()?.length >= 2) && (
+        <div className="reveal-on-scroll">
+          <RecommendationRow
+            title={`🔎 Search Results`}
+            movies={filteredSearchResults}
+            loading={loadingSearch}
+            emptyMessage="No matching movies found."
+            showExplanation={false}
+          />
+        </div>
+      )}
 
       {/* 🎯 Recommended For You */}
       <div className="reveal-on-scroll">

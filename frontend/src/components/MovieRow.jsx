@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
+import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 import { useNavigate } from "react-router-dom"
 import SkeletonRow from "./SkeletonRow"
 import { addMovieToWatchlist, addMovieToLiked } from "../api/recommendations"
 
-function MovieRow({ title, search = "", filters = {} }) {
+function MovieRow({ title, search: propSearch, filters: propFilters }) {
+  // Use global search/filter if not provided as props
+  const { search, year, genre } = useSearchFilter()
   const [movies, setMovies] = useState([])
   const [loading, setLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
@@ -53,21 +56,25 @@ function MovieRow({ title, search = "", filters = {} }) {
     }
   }
 
+  // Use props if provided, else global context
+  const effectiveSearch = propSearch !== undefined ? propSearch : search
+  const effectiveFilters = propFilters !== undefined ? propFilters : { year, genre }
+
   /* ------------------ CLIENT SIDE FILTERING ------------------ */
   const filteredMovies = movies.filter((movie) => {
     // search by title
-    if (search && !movie.title.toLowerCase().includes(search.toLowerCase())) {
+    if (effectiveSearch && !movie.title.toLowerCase().includes(effectiveSearch.toLowerCase())) {
       return false
     }
 
     // filter by year
-    if (filters.year) {
+    if (effectiveFilters.year) {
       const movieYear = movie.release_date?.split("-")[0]
-      if (movieYear !== filters.year) return false
+      if (movieYear !== effectiveFilters.year) return false
     }
 
     // filter by genre (TMDB gives genre_ids)
-    if (filters.genre && movie.genre_ids) {
+    if (effectiveFilters.genre && movie.genre_ids) {
       const genreMap = {
         Action: 28,
         Comedy: 35,
@@ -75,7 +82,7 @@ function MovieRow({ title, search = "", filters = {} }) {
         Thriller: 53,
       }
 
-      if (!movie.genre_ids.includes(genreMap[filters.genre])) {
+      if (!movie.genre_ids.includes(genreMap[effectiveFilters.genre])) {
         return false
       }
     }

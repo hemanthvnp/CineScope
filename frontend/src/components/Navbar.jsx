@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
+import { useSearchFilter } from "../context/SearchFilterContext"
+import EnhancedSearchBar from "./EnhancedSearchBar"
+import "./EnhancedSearchBar.css"
 
 const AUTH_STORAGE_KEY = "cinescope-auth"
 const TOKEN_STORAGE_KEY = "cinescope-token"
@@ -11,17 +14,12 @@ const getAuthState = () => {
   )
 }
 
-function Navbar({ onSearch, onFilter }) {
+function Navbar() {
   const location = useLocation()
   const navigate = useNavigate()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(() => getAuthState())
-
-  // search & filter states
-  const [search, setSearch] = useState("")
-  const [year, setYear] = useState("")
-  const [genre, setGenre] = useState("")
 
   useEffect(() => {
     setIsAuthenticated(getAuthState())
@@ -45,53 +43,14 @@ function Navbar({ onSearch, onFilter }) {
     navigate("/")
   }
 
-  const handleSearchChange = (e) => {
-    const value = e.target.value
-    setSearch(value)
-    onSearch && onSearch(value)
-  }
-
-  const applyFilters = () => {
-    onFilter && onFilter({ year, genre })
-  }
-
   return (
     <nav className="site-nav">
       <Link to={isAuthenticated ? "/home" : "/"} className="site-logo-link">
         <h2 className="site-logo">CineScope</h2>
       </Link>
 
-      {/* SEARCH + FILTERS (only when logged in & on home) */}
-      {isAuthenticated && location.pathname === "/home" && (
-        <div className="nav-search">
-          <input
-            type="text"
-            placeholder="Search movies..."
-            value={search}
-            onChange={handleSearchChange}
-          />
-
-          <input
-            type="number"
-            placeholder="Year"
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-          />
-
-          <select
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-          >
-            <option value="">Genre</option>
-            <option value="Action">Action</option>
-            <option value="Comedy">Comedy</option>
-            <option value="Drama">Drama</option>
-            <option value="Thriller">Thriller</option>
-          </select>
-
-          <button onClick={applyFilters}>Apply</button>
-        </div>
-      )}
+      {/* ENHANCED SEARCH BAR (show on all pages when logged in) */}
+      {isAuthenticated && <EnhancedSearchBar />}
 
       {/* PUBLIC LINKS */}
       {!isAuthenticated && (

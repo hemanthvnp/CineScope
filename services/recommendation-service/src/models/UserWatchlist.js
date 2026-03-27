@@ -20,7 +20,7 @@ const userWatchlistSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["watchlist", "watched", "rated", "liked"],
+    enum: ["watchlist", "watched", "rated", "liked", "disliked"],
     default: "watchlist"
   },
   rating: {
