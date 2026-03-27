@@ -7,6 +7,35 @@ const { sendOtpEmail } = require("../services/emailService")
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000
 
+const axios = require("axios")
+
+const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
+
+// Mapping of frontend genre names to TMDB genre IDs
+const GENRE_NAME_TO_ID = {
+	"action": 28,
+	"adventure": 12,
+	"animation": 16,
+	"comedy": 35,
+	"crime": 80,
+	"documentary": 99,
+	"drama": 18,
+	"family": 10751,
+	"fantasy": 14,
+	"history": 36,
+	"horror": 27,
+	"music": 10402,
+	"mystery": 9648,
+	"romance": 10749,
+	"sci-fi": 878,
+	"science fiction": 878,
+	"tv movie": 10770,
+	"thriller": 53,
+	"war": 10752,
+	"western": 37,
+	"anime": 16 // Mapping anime to animation for recommendation service
+}
+
 const hashOtp = (otpCode) => {
 	const otpSecret = process.env.OTP_SECRET || "cinescope-otp-secret"
 
@@ -156,6 +185,26 @@ const verifyRegistrationOtp = async (req, res) => {
 		})
 
 		await PendingRegistration.deleteOne({ _id: pending._id })
+
+		// Initialize user preferences in recommendation service
+		if (user.favoriteGenre) {
+			const genreId = GENRE_NAME_TO_ID[user.favoriteGenre.toLowerCase()]
+			if (genreId) {
+				try {
+					await axios.put(
+						`${RECOMMENDATION_SERVICE_URL}/api/recommendations/${user._id}/preferences`,
+						{
+							preferences: [{ genre_id: genreId, score: 10 }] // Max score for favorite genre
+						},
+						{ timeout: 5000 }
+					)
+					console.log(`[userController] Initialized preference for user ${user._id}: ${user.favoriteGenre} (${genreId})`)
+				} catch (prefError) {
+					console.warn(`[userController] Failed to initialize preferences for user ${user._id}:`, prefError.message)
+				}
+			}
+		}
+
 		const authPayload = createAuthPayload(user)
 
 		return res.status(201).json({

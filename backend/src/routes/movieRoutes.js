@@ -9,6 +9,8 @@ router.get("/upcoming", movieController.getUpcoming)
 router.get("/top-rated", movieController.getTopRated)
 router.get("/search", movieController.searchMovies)
 router.get("/genres", movieController.getGenres)
+router.get("/filter/options", movieController.getFilterOptions)  // Filter options for dropdowns
+router.get("/filter", movieController.filterMovies)              // Intersection filter
 router.get("/genre/:genreId", movieController.getByGenre)
 router.get("/language/:language", movieController.getMoviesByLanguage)
 router.get("/:id", movieController.getMovieDetails)

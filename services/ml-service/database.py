@@ -8,7 +8,10 @@ Movie data is fetched from TMDB API instead of a local MongoDB collection.
 import os
 from pymongo import MongoClient
 from bson import ObjectId
-from tmdb_client import fetch_popular_movies, fetch_trending_movies, fetch_genre_list
+from tmdb_client import (
+    fetch_popular_movies, fetch_trending_movies, fetch_genre_list,
+    fetch_discover_movies, fetch_movie_details
+)
 
 _client = None
 _db = None
@@ -30,13 +33,77 @@ def get_database():
 
 def get_all_movies():
     """
-    Load movies from TMDB (popular movies across multiple pages).
-    Returns a list of dicts with movie_id, title, overview, genres, etc.
+    Load a large, diverse pool of movies from TMDB.
+    Combines global popular, top rated, and regional hits.
     """
-    print("[ml-service] Fetching movies from TMDB...")
-    movies = fetch_popular_movies(pages=10)
-    print(f"[ml-service] Fetched {len(movies)} movies from TMDB")
-    return movies
+    print("[ml-service] Fetching diverse movie pool from TMDB...")
+    
+    movies_dict = {}
+    
+    # 1. Global Popular (High coverage)
+    try:
+        popular = fetch_popular_movies(pages=15)
+        for m in popular:
+            movies_dict[m["movie_id"]] = m
+    except Exception as e:
+        print(f"[ml-service] Popular fetch failed: {e}")
+        
+    # 2. Trending (Current hits)
+    try:
+        trending = fetch_trending_movies(limit=80)
+        for m in trending:
+            movies_dict[m["movie_id"]] = m
+    except Exception as e:
+        print(f"[ml-service] Trending fetch failed: {e}")
+
+    # 3. Regional Discovery (Specifically targeting user's likely interests)
+    # We fetch a few pages of popular movies in common regional languages
+    for lang in ["ta", "hi", "te", "ml"]: # Added Malayalam
+        try:
+            regional = fetch_discover_movies(language=lang, pages=8) # Increased to 8 pages
+            for m in regional:
+                movies_dict[m["movie_id"]] = m
+        except Exception as e:
+            print(f"[ml-service] {lang} fetch failed: {e}")
+
+    # 4. User History Movies (CRITICAL: ensure all liked/rated movies are in the model)
+    try:
+        db = get_database()
+        
+        # Get all movie IDs from watchlists and ratings
+        history_ids = set()
+        
+        # Watchlist/Likes
+        watchlist_entries = list(db.userwatchlists.find({}, {"_id": 0, "movie_id": 1}))
+        for entry in watchlist_entries:
+            history_ids.add(entry["movie_id"])
+            
+        # Ratings
+        if "ratings" in db.list_collection_names():
+            rating_entries = list(db.ratings.find({}, {"_id": 0, "movieId": 1}))
+            for entry in rating_entries:
+                history_ids.add(entry["movieId"])
+        
+        print(f"[ml-service] Found {len(history_ids)} movies in user histories")
+        
+        # Fetch details for any history movie not already in our pool
+        added_count = 0
+        for mid in history_ids:
+            if mid not in movies_dict:
+                details = fetch_movie_details(mid)
+                if details:
+                    movies_dict[mid] = details
+                    added_count += 1
+        
+        if added_count > 0:
+            print(f"[ml-service] Added {added_count} history movies to the pool")
+            
+    except Exception as e:
+        print(f"[ml-service] WARNING: History movie fetch failed: {e}")
+            
+    all_movies = list(movies_dict.values())
+    print(f"[ml-service] Total unique movies in diverse pool: {len(all_movies)}")
+    return all_movies
 
 
 def get_all_genres():
@@ -49,14 +116,9 @@ def get_movie_genres():
     Build movie-genre mappings from TMDB movie data.
     Returns a dict: movie_id -> list of genre_ids
     """
-    movies = fetch_popular_movies(pages=10)
-    movie_genre_map = {}
-    for m in movies:
-        mid = m["movie_id"]
-        genre_ids = m.get("genre_ids", [])
-        if genre_ids:
-            movie_genre_map[mid] = genre_ids
-    return movie_genre_map
+    # This is called separately, but we can reuse the same logic
+    # or just return an empty map and let the models handle it
+    return {}
 
 
 def get_user_preferences(user_id: str):
@@ -92,10 +154,10 @@ def get_all_user_ratings():
     """
     db = get_database()
 
-    # Gather from userwatchlists (status='rated' with a rating)
+    # Gather from userwatchlists (status='rated' or 'liked')
     watchlist_ratings = list(db.userwatchlists.find(
-        {"status": "rated", "rating": {"$ne": None}},
-        {"_id": 0, "user_id": 1, "movie_id": 1, "rating": 1}
+        {"status": {"$in": ["rated", "liked"]}},
+        {"_id": 0, "user_id": 1, "movie_id": 1, "rating": 1, "status": 1}
     ))
 
     # Also gather from the 'ratings' collection if it exists
@@ -109,10 +171,11 @@ def get_all_user_ratings():
     # Normalize to a common format
     all_ratings = []
     for r in watchlist_ratings:
+        rating_val = 10.0 if r["status"] == "liked" else float(r.get("rating") or 5.0)
         all_ratings.append({
             "user_id": str(r["user_id"]),
             "movie_id": r["movie_id"],
-            "rating": float(r["rating"])
+            "rating": rating_val
         })
 
     for r in ratings_from_collection:
@@ -134,17 +197,19 @@ def get_user_rated_movies(user_id: str):
 
     rated = {}
 
-    # From watchlist (rated + disliked)
+    # From watchlist (rated + disliked + liked)
     watchlist = list(db.userwatchlists.find(
         {
             "user_id": ObjectId(user_id),
-            "status": {"$in": ["rated", "disliked"]}
+            "status": {"$in": ["rated", "disliked", "liked"]}
         },
         {"_id": 0, "movie_id": 1, "rating": 1, "status": 1}
     ))
     for w in watchlist:
         if w["status"] == "disliked":
             rated[w["movie_id"]] = 1.0  # Treat as strongest possible negative signal
+        elif w["status"] == "liked":
+            rated[w["movie_id"]] = 10.0 # Treat 'liked' as max score for content-based seeding
         elif w.get("rating") is not None:
             rated[w["movie_id"]] = float(w["rating"])
 

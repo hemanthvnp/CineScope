@@ -116,6 +116,45 @@ const getGenres = async (req, res) => {
   }
 }
 
+/**
+ * Filter movies by intersection of genre, language, and era
+ * GET /api/movies/filter?genre=28&language=en&era=Modern
+ */
+const filterMovies = async (req, res) => {
+  try {
+    const { genre, language, era, page = 1 } = req.query
+
+    const filters = {
+      genreId: genre ? parseInt(genre) : null,
+      language: language || null,
+      era: era || null
+    }
+
+    const data = await tmdbService.filterMovies(filters, parseInt(page))
+
+    res.json({
+      ...data,
+      message: `Found ${data.total_results} movies matching filters`
+    })
+  } catch (error) {
+    console.error("Filter error:", error.message)
+    res.status(500).json({ message: "Failed to filter movies" })
+  }
+}
+
+/**
+ * Get available filter options for dropdowns
+ * GET /api/movies/filter/options
+ */
+const getFilterOptions = async (req, res) => {
+  try {
+    const options = await tmdbService.getFilterOptions()
+    res.json(options)
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch filter options" })
+  }
+}
+
 module.exports = {
   getTrending,
   getPopular,
@@ -126,5 +165,7 @@ module.exports = {
   getByGenre,
   getMovieDetails,
   getMoviesByLanguage,
-  getGenres
+  getGenres,
+  filterMovies,
+  getFilterOptions
 }

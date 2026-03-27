@@ -50,15 +50,17 @@ def build_tfidf_model(movies, movie_genre_map, genre_names):
     for movie in movies:
         mid = movie["movie_id"]
         overview = movie.get("overview", "") or ""
+        title = movie.get("title", "") or ""
 
         # Get genre names for this movie and repeat to boost their weight
         genres = movie_genre_map.get(mid, [])
         genre_text = " ".join([
             genre_names.get(gid, "") for gid in genres
-        ]) * 3  # Repeat 3x to amplify genre signal in TF-IDF
+        ]) * 4  # Repeat 4x to amplify genre signal in TF-IDF
 
-        # Combine overview and genre text into a single document
-        combined = f"{overview} {genre_text}".strip()
+        # Combine title, overview and genre text into a single document
+        # Title is added to help catch direct title matches in similarity
+        combined = f"{title} {overview} {genre_text}".strip()
 
         if combined:
             documents.append(combined)
@@ -70,15 +72,15 @@ def build_tfidf_model(movies, movie_genre_map, genre_names):
         return
 
     # Build TF-IDF matrix
-    # - max_features=5000: limit vocabulary size for performance
+    # - max_features=10000: larger vocabulary for more precision
     # - stop_words='english': remove common words like 'the', 'is'
     # - ngram_range=(1,2): capture single words and bigrams like 'time travel'
     _vectorizer = TfidfVectorizer(
-        max_features=5000,
+        max_features=10000,
         stop_words="english",
         ngram_range=(1, 2),
-        min_df=2,       # Ignore terms appearing in fewer than 2 documents
-        max_df=0.85     # Ignore terms appearing in more than 85% of documents
+        min_df=1,       # Include terms appearing in even 1 document
+        max_df=0.9      # Ignore terms appearing in more than 90% of documents
     )
     _tfidf_matrix = _vectorizer.fit_transform(documents)
 
@@ -91,7 +93,7 @@ def build_tfidf_model(movies, movie_genre_map, genre_names):
           f"{_tfidf_matrix.shape[1]} features")
 
 
-def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
+def get_content_scores(user_rated_movies, exclude_ids=None, limit=50, user_profile=None, movies_lookup=None):
     """
     Compute content-based recommendation scores for a user.
 
@@ -105,6 +107,8 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
         user_rated_movies: dict of movie_id -> rating (1-10)
         exclude_ids: set of movie_ids to exclude from results
         limit: max number of results
+        user_profile: dict with user preferences (language, genre, era)
+        movies_lookup: dict of movie_id -> movie_details
 
     Returns:
         list of (movie_id, score, best_match_movie_id) tuples
@@ -115,13 +119,26 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
         return []
 
     exclude_ids = exclude_ids or set()
+    pref_lang = (user_profile.get("preferredLanguage") or "").lower().strip() if user_profile else None
 
     # Select seeds: separate into positive (rating >= 5) and negative (rating < 5)
     pos_seeds = []
     neg_seeds = []
     
     # Sort all rated movies by rating (descending)
-    sorted_ratings = sorted(user_rated_movies.items(), key=lambda x: -x[1])
+    # SECONDARY SORT: Prioritize movies that match the user's preferred language
+    def _seed_sort_key(item):
+        mid, rating = item
+        lang_match = False
+        if pref_lang and movies_lookup and mid in movies_lookup:
+            movie = movies_lookup[mid]
+            movie_lang = (movie.get("language") or movie.get("original_language") or "").lower().strip()
+            lang_match = (movie_lang == pref_lang)
+        
+        # Priority: 1. Rating, 2. Language Match
+        return (rating, 1 if lang_match else 0)
+
+    sorted_ratings = sorted(user_rated_movies.items(), key=_seed_sort_key, reverse=True)
     
     for mid, rating in sorted_ratings:
         if mid not in _movie_id_index:
@@ -145,6 +162,9 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
 
     # 1. Compute Positive Affinity
     total_pos_weight = 0
+    # Collect candidates per seed to ensure variety
+    seed_candidates = {} # seed_mid -> list of (movie_id, similarity)
+    
     for seed_mid, rating in pos_seeds:
         seed_idx = _movie_id_index[seed_mid]
         sim_scores = cosine_similarity(_tfidf_matrix[seed_idx:seed_idx + 1], _tfidf_matrix).flatten()
@@ -153,11 +173,16 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
         pos_scores += sim_scores * weight
         total_pos_weight += weight
 
-        # Track best matches for explanations
-        for idx in range(n_movies):
+        # Collect top candidates for this specific seed
+        top_indices = np.argsort(sim_scores)[::-1][:limit*2]
+        seed_candidates[seed_mid] = []
+        for idx in top_indices:
             mid = _index_movie_id[idx]
-            if mid not in best_match or sim_scores[idx] > best_match[mid][1]:
-                best_match[mid] = (seed_mid, sim_scores[idx])
+            if mid not in exclude_ids and mid not in user_rated_movies:
+                seed_candidates[seed_mid].append((mid, sim_scores[idx]))
+                # Track best match for initial explanation
+                if mid not in best_match or sim_scores[idx] > best_match[mid][1]:
+                    best_match[mid] = (seed_mid, sim_scores[idx])
 
     if total_pos_weight > 0:
         pos_scores /= total_pos_weight
@@ -176,27 +201,49 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
     if total_neg_weight > 0:
         neg_scores /= total_neg_weight
 
-    # 3. Combine: Affinity - Penalty
-    # We use a penalty multiplier to make dislikes strong
-    PENALTY_MULTIPLIER = 1.25
-    final_scores = pos_scores - (PENALTY_MULTIPLIER * neg_scores)
+    # 3. Combine and Fair Selection
+    # We want to ensure every seed contributes some top matches
+    # to avoid one seed (like a Hollywood hit) dominating the row.
+    
+    PENALTY_MULTIPLIER = 1.5
+    
+    # Final candidates set
+    final_results_dict = {} # mid -> (score, best_match_mid)
+    
+    # Take top N from EACH seed to ensure variety
+    per_seed_limit = max(8, limit // len(pos_seeds)) if pos_seeds else 0
+    
+    for seed_mid, candidates in seed_candidates.items():
+        # Get seed details for language matching
+        seed_movie = movies_lookup.get(seed_mid, {})
+        seed_lang = (seed_movie.get("language") or seed_movie.get("original_language") or "").lower().strip()
+        
+        for mid, sim in candidates[:per_seed_limit * 2]: # Look at more candidates per seed
+            # Compute final penalized score for this candidate
+            mid_idx = _movie_id_index[mid]
+            penalty = neg_scores[mid_idx] * PENALTY_MULTIPLIER
+            
+            # Weighted affinity from all seeds + specific boost for this seed's similarity
+            # This makes a movie that is a perfect match for ONE seed rank highly
+            # even if it's not a match for others.
+            blended_score = (0.3 * pos_scores[mid_idx]) + (0.7 * sim) - penalty
+            
+            # EXTRA BOOST: If the candidate matches the seed's language, give it a bump
+            # This helps preserve regional clusters
+            candidate_movie = movies_lookup.get(mid, {})
+            cand_lang = (candidate_movie.get("language") or candidate_movie.get("original_language") or "").lower().strip()
+            if cand_lang == seed_lang and cand_lang != "en":
+                blended_score *= 1.2
+            
+            if blended_score > 0.03:
+                if mid not in final_results_dict or blended_score > final_results_dict[mid][0]:
+                    final_results_dict[mid] = (blended_score, seed_mid)
 
-    # Build results: (movie_id, score, best_match_movie_id)
+    # Convert to list and sort
     results = []
-    for idx in range(n_movies):
-        movie_id = _index_movie_id[idx]
-        if movie_id in exclude_ids or movie_id in user_rated_movies:
-            continue
+    for mid, (score, match_mid) in final_results_dict.items():
+        results.append((mid, score, match_mid))
 
-        score = float(final_scores[idx])
-        # If no positive matches, but strong negative matches, score will be negative.
-        # We cap it at 0.0 for the final results to keep them as "recommendations",
-        # but the sorting will naturally push penalized items to the very bottom.
-        if score > 0.01:
-            match_mid = best_match.get(movie_id, (None, 0))[0]
-            results.append((movie_id, score, match_mid))
-
-    # Sort and limit
     results.sort(key=lambda x: -x[1])
     return results[:limit]
 

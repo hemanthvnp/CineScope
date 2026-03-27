@@ -34,12 +34,14 @@ function MovieCard({ movie, explanation, score, showExplanation = true }) {
     e.stopPropagation()
     if (!movieId) return
 
+    console.log(`[MovieCard] Adding movie ${movieId} to watchlist...`)
     try {
-      await addMovieToWatchlist(movieId, "watchlist")
+      const response = await addMovieToWatchlist(movieId, "watchlist")
+      console.log(`[MovieCard] Success:`, response)
       setWatchlistAdded(true)
-      setTimeout(() => setWatchlistAdded(false), 1500)
+      setDislikedAdded(false)
     } catch (err) {
-      console.error("Failed to add to watchlist:", err?.response?.data || err?.message || err)
+      console.error("[MovieCard] Failed to add to watchlist:", err?.response?.data || err?.message || err)
     }
   }
 
@@ -47,12 +49,14 @@ function MovieCard({ movie, explanation, score, showExplanation = true }) {
     e.stopPropagation()
     if (!movieId) return
 
+    console.log(`[MovieCard] Liking movie ${movieId}...`)
     try {
-      await addMovieToLiked(movieId)
+      const response = await addMovieToLiked(movieId)
+      console.log(`[MovieCard] Success:`, response)
       setLikedAdded(true)
-      setTimeout(() => setLikedAdded(false), 1500)
+      setDislikedAdded(false)
     } catch (err) {
-      console.error("Failed to like movie:", err?.response?.data || err?.message || err)
+      console.error("[MovieCard] Failed to like movie:", err?.response?.data || err?.message || err)
     }
   }
 
@@ -60,12 +64,15 @@ function MovieCard({ movie, explanation, score, showExplanation = true }) {
     e.stopPropagation()
     if (!movieId) return
 
+    console.log(`[MovieCard] Disliking movie ${movieId}...`)
     try {
-      await addMovieToDisliked(movieId)
+      const response = await addMovieToDisliked(movieId)
+      console.log(`[MovieCard] Success:`, response)
       setDislikedAdded(true)
-      setTimeout(() => setDislikedAdded(false), 1500)
+      setLikedAdded(false)
+      setWatchlistAdded(false)
     } catch (err) {
-      console.error("Failed to dislike movie:", err?.response?.data || err?.message || err)
+      console.error("[MovieCard] Failed to dislike movie:", err?.response?.data || err?.message || err)
     }
   }
 
