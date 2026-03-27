@@ -7,16 +7,24 @@
 
 require("dotenv").config()
 const app = require("./app")
-const connectDB = require("./config/db")
+const { connectDB } = require("./config/db")
 
 const PORT = process.env.PORT || 5001
 const SERVICE_NAME = process.env.SERVICE_NAME || "recommendation-service"
 
-// Connect to MongoDB
-connectDB()
+const startServer = async () => {
+  try {
+    // Ensure DB is connected before serving requests
+    await connectDB()
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`[${SERVICE_NAME}] Running on port ${PORT}`)
-  console.log(`[${SERVICE_NAME}] Health check: http://localhost:${PORT}/health`)
-})
+    app.listen(PORT, () => {
+      console.log(`[${SERVICE_NAME}] Running on port ${PORT}`)
+      console.log(`[${SERVICE_NAME}] Health check: http://localhost:${PORT}/health`)
+    })
+  } catch (error) {
+    console.error(`[${SERVICE_NAME}] Failed to start:`, error.message)
+    process.exit(1)
+  }
+}
+
+startServer()

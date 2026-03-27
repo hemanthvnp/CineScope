@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import HeroBanner from "../components/HeroBanner"
 import RecommendationRow from "../components/RecommendationRow"
 import MovieRow from "../components/MovieRow"
+import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 import {
   getHybridRecommendations,
@@ -38,14 +39,20 @@ function Home() {
   const [becauseYouLiked, setBecauseYouLiked] = useState([])
   const [genreRecs, setGenreRecs] = useState([])
   const [languageMovies, setLanguageMovies] = useState([])
-  
+
+  const [searchResults, setSearchResults] = useState([])
+  const [loadingSearch, setLoadingSearch] = useState(false)
+
   const [loadingHybrid, setLoadingHybrid] = useState(true)
   const [loadingTrending, setLoadingTrending] = useState(true)
   const [loadingNowPlaying, setLoadingNowPlaying] = useState(true)
   const [loadingUpcoming, setLoadingUpcoming] = useState(true)
   const [loadingLanguage, setLoadingLanguage] = useState(false)
 
-  // Intersection observer for scroll reveal
+  // Use global search/filter state
+  const { search, year, genre } = useSearchFilter()
+
+  /* ------------------ scroll animation ------------------ */
   useEffect(() => {
     const nodes = document.querySelectorAll(".reveal-on-scroll")
     const observer = new IntersectionObserver(
@@ -64,7 +71,7 @@ function Home() {
     return () => observer.disconnect()
   })
 
-  // Fetch user profile
+  /* ------------------ profile fetch ------------------ */
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -92,6 +99,7 @@ function Home() {
     fetchProfile()
   }, [])
 
+  /* ------------------ recommendation fetches ------------------ */
   // Fetch hybrid recommendations
   useEffect(() => {
     if (!profile?.id) return
@@ -196,6 +204,71 @@ function Home() {
     fetchLanguageMovies()
   }, [profile?.preferredLanguage])
 
+  /* ------------------ data filtering utility ------------------ */
+  const applyFilters = (movies, options = {}) => {
+    const { includeSearchText = true } = options
+    return movies.filter((movie) => {
+      // search by title (optional — searchResults already come from server)
+      if (includeSearchText && search && !movie.title?.toLowerCase().includes(search.toLowerCase())) {
+        return false
+      }
+
+      // filter by year
+      if (year) {
+        const movieYear = (movie.release_date || movie.year || "")?.split("-")[0]
+        if (movieYear !== year) return false
+      }
+
+      // filter by genre
+      if (genre && movie.genre_ids) {
+        const genreMap = { Action: 28, Comedy: 35, Drama: 18, Thriller: 53 }
+        if (!movie.genre_ids.includes(genreMap[genre])) {
+          return false
+        }
+      }
+      return true
+    })
+  }
+
+  const filteredSearchResults = useMemo(() => {
+    return applyFilters(searchResults, { includeSearchText: false })
+  }, [searchResults, search, year, genre])
+
+  /* ------------------ real search (TMDB) ------------------ */
+  useEffect(() => {
+    const q = (search || "").trim()
+    if (q.length < 2) {
+      setSearchResults([])
+      setLoadingSearch(false)
+      return
+    }
+
+    setLoadingSearch(true)
+    const t = setTimeout(async () => {
+      try {
+        const response = await api.get("/movies/search", { params: { query: q, page: 1 } })
+        const results = response?.data?.results || []
+        const mapped = results
+          .filter((m) => m?.id && m?.title)
+          .slice(0, 30)
+          .map((m) => ({
+            ...m,
+            movie_id: m.id,
+            explanation: { reason: `Search match for "${q}"`, type: "general" }
+          }))
+        setSearchResults(mapped)
+      } catch (err) {
+        console.error("Search failed:", err?.response?.data || err?.message || err)
+        setSearchResults([])
+      } finally {
+        setLoadingSearch(false)
+      }
+    }, 350)
+
+    return () => clearTimeout(t)
+  }, [search])
+
+  /* ------------------ profile text ------------------ */
   const displayName = (profile?.screenName || profile?.name || "Cinephile").trim()
   const nickname = displayName.replace(/^@/, "").replace(/\s+/g, "")
   const signatureLine = profile?.signatureLine?.trim() || "Start by rating a film you love and we'll shape your next perfect watch."
@@ -210,11 +283,24 @@ function Home() {
 
       <div className="reveal-on-scroll"><HeroBanner /></div>
 
+      {/* 🔎 Search Results */}
+      {(search?.trim()?.length >= 2) && (
+        <div className="reveal-on-scroll">
+          <RecommendationRow
+            title={`🔎 Search Results`}
+            movies={filteredSearchResults}
+            loading={loadingSearch}
+            emptyMessage="No matching movies found."
+            showExplanation={false}
+          />
+        </div>
+      )}
+
       {/* 🎯 Recommended For You */}
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🎯 Recommended For You"
-          movies={hybridRecs}
+          movies={applyFilters(hybridRecs)}
           loading={loadingHybrid}
           emptyMessage="Rate some movies to get personalized recommendations!"
           showExplanation={true}
@@ -225,7 +311,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🎬 In Theatres Now"
-          movies={nowPlaying}
+          movies={applyFilters(nowPlaying)}
           loading={loadingNowPlaying}
           emptyMessage="Could not load now playing movies."
           showExplanation={false}
@@ -237,7 +323,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title={`🌐 Popular in ${LANGUAGE_LABELS[profile.preferredLanguage] || profile.preferredLanguage.toUpperCase()}`}
-            movies={languageMovies}
+            movies={applyFilters(languageMovies)}
             loading={loadingLanguage}
             emptyMessage="No movies found in your preferred language."
             showExplanation={false}
@@ -249,7 +335,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🔥 Trending This Week"
-          movies={trendingMovies}
+          movies={applyFilters(trendingMovies)}
           loading={loadingTrending}
           emptyMessage="Could not load trending movies."
           showExplanation={false}
@@ -261,7 +347,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title="❤️ Because You Liked..."
-            movies={becauseYouLiked}
+            movies={applyFilters(becauseYouLiked)}
             loading={false}
             showExplanation={true}
           />
@@ -273,7 +359,7 @@ function Home() {
         <div className="reveal-on-scroll">
           <RecommendationRow
             title="🎭 Based on Your Favorite Genres"
-            movies={genreRecs}
+            movies={applyFilters(genreRecs)}
             loading={false}
             showExplanation={true}
           />
@@ -284,7 +370,7 @@ function Home() {
       <div className="reveal-on-scroll">
         <RecommendationRow
           title="🍿 Coming Soon"
-          movies={upcoming}
+          movies={applyFilters(upcoming)}
           loading={loadingUpcoming}
           emptyMessage="Could not load upcoming movies."
           showExplanation={false}

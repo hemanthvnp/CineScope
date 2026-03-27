@@ -39,6 +39,8 @@ CONTENT_WEIGHT = float(os.getenv("CONTENT_WEIGHT", "0.4"))
 COLLAB_WEIGHT = float(os.getenv("COLLAB_WEIGHT", "0.6"))
 DEFAULT_LIMIT = int(os.getenv("DEFAULT_LIMIT", "20"))
 MIN_RATINGS_FOR_COLLAB = int(os.getenv("MIN_RATINGS_FOR_COLLAB", "3"))
+MIN_ACCEPTABLE_VOTE_AVG = float(os.getenv("MIN_ACCEPTABLE_VOTE_AVG", "6.0"))
+MIN_ACCEPTABLE_VOTE_COUNT = int(os.getenv("MIN_ACCEPTABLE_VOTE_COUNT", "80"))
 
 # Preference boost multipliers
 LANG_BOOST = 1.50       # +150% for matching preferred language (strong priority)
@@ -132,6 +134,40 @@ def _get_movie_year(movie):
     rd_str = str(rd)
     m = re.match(r"(\d{4})", rd_str)
     return int(m.group(1)) if m else None
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _compute_quality_score(movie):
+    """
+    Compute a quality score in [0,1] from vote average, confidence, popularity.
+    """
+    if not movie:
+        return 0.0
+
+    vote_avg = _safe_float(movie.get("vote_average"), 0.0)
+    vote_count = _safe_float(movie.get("vote_count"), 0.0)
+    popularity = _safe_float(movie.get("popularity"), 0.0)
+
+    rating_norm = max(0.0, min(vote_avg / 10.0, 1.0))
+    confidence = min(vote_count / 500.0, 1.0)
+    popularity_norm = min(popularity / 200.0, 1.0)
+
+    return round((0.60 * rating_norm) + (0.25 * confidence) + (0.15 * popularity_norm), 4)
+
+
+def _passes_quality_floor(movie):
+    """Filter out weak titles when enough stronger options exist."""
+    if not movie:
+        return False
+    vote_avg = _safe_float(movie.get("vote_average"), 0.0)
+    vote_count = _safe_float(movie.get("vote_count"), 0.0)
+    return vote_avg >= MIN_ACCEPTABLE_VOTE_AVG and vote_count >= MIN_ACCEPTABLE_VOTE_COUNT
 
 
 def _compute_preference_boost(movie_id, user_profile):
@@ -240,6 +276,8 @@ def get_hybrid_recommendations(user_id, limit=None):
             for m in lang_movies:
                 mid = m["movie_id"]
                 if mid not in existing_mids and mid not in exclude_ids:
+                    if not _passes_quality_floor(m):
+                        continue
                     # Add to results with a base score derived from popularity
                     recommendations.append({
                         "movie_id": mid,
@@ -326,13 +364,24 @@ def _apply_preference_boosts(results, user_profile, limit):
 
     # If the user hasn't set any profile preferences, just sort by score and return
     if not pref_lang and not era_range and not fav_genre:
-        results.sort(key=lambda x: -x["score"])
-        return results[:limit]
+        def _no_pref_sort_key(rec):
+            movie = _movies_lookup.get(rec["movie_id"], {})
+            quality = _compute_quality_score(movie)
+            base = rec.get("score", 0.0)
+            return ((0.7 * base) + (0.3 * quality), base, quality)
 
-    # Cluster results into Tiers using a weighted score
-    # Lang=4, Genre=2, Era=1
-    # This ensures ANY Lang match (score >= 4) beats any non-Lang match (max score 3)
-    tiers = {i: [] for i in range(8)}
+        results.sort(key=_no_pref_sort_key, reverse=True)
+        high_quality = [r for r in results if _passes_quality_floor(_movies_lookup.get(r["movie_id"]))]
+        if len(high_quality) >= limit:
+            return high_quality[:limit]
+        return (high_quality + [r for r in results if r not in high_quality])[:limit]
+
+    # Group results by how many active preferences they satisfy.
+    # This enforces intersection-first ranking:
+    #   1) movies matching ALL active preferences first
+    #   2) then movies matching (N-1), then (N-2), ...
+    active_pref_count = int(bool(pref_lang)) + int(bool(era_range)) + int(bool(fav_genre))
+    tiers = {i: [] for i in range(active_pref_count + 1)}
 
     for rec in results:
         movie = _movies_lookup.get(rec["movie_id"])
@@ -340,47 +389,73 @@ def _apply_preference_boosts(results, user_profile, limit):
             tiers[0].append(rec)
             continue
 
-        weighted_score = 0
+        match_count = 0
         boost_reasons = []
 
-        # 1. Language Match (Weight 4)
+        # 1. Language match
         if pref_lang:
-            movie_lang = (movie.get("language") or "").lower().strip()
+            movie_lang = (movie.get("language") or movie.get("original_language") or "").lower().strip()
             if movie_lang == pref_lang:
-                weighted_score += 4
+                match_count += 1
                 boost_reasons.append("Language")
 
-        # 2. Genre Match (Weight 2)
+        # 2. Genre match
         if fav_genre:
             movie_genre_ids = _movie_genre_map.get(rec["movie_id"], [])
             movie_genre_lower = [_genre_names.get(gid, "").lower() for gid in movie_genre_ids]
             if fav_genre in movie_genre_lower:
-                weighted_score += 2
+                match_count += 1
                 boost_reasons.append("Genre")
 
-        # 3. Era Match (Weight 1)
+        # 3. Era match
         if era_range:
             movie_year = _get_movie_year(movie)
             if movie_year and era_range[0] <= movie_year <= era_range[1]:
-                weighted_score += 1
+                match_count += 1
                 boost_reasons.append("Era")
 
-        # Attach the intersection details (we still call 'matches' the count for legacy reasons or just use score)
+        # Attach intersection details for explainability/debugging.
+        rec_context = rec.get("context")
+        if not isinstance(rec_context, dict):
+            rec_context = {}
+            rec["context"] = rec_context
+        rec_context["matched_preferences"] = match_count
+        rec_context["active_preferences"] = active_pref_count
+        rec_context["is_full_intersection"] = (active_pref_count > 0 and match_count == active_pref_count)
+        rec_context["quality_score"] = _compute_quality_score(movie)
+        rec_context["passes_quality_floor"] = _passes_quality_floor(movie)
+
         if boost_reasons:
-            rec["context"]["intersection_tier"] = weighted_score
-            rec["context"]["intersection_reasons"] = boost_reasons
+            rec_context["intersection_tier"] = match_count
+            rec_context["intersection_reasons"] = boost_reasons
 
-        tiers[weighted_score].append(rec)
+        tiers[match_count].append(rec)
 
-    # Build the final prioritized list: Score 7 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1 -> 0
+    # Build final list by intersection strength: N -> ... -> 0
     final_results = []
-    print(f"[ml-service] Final Weighted Tiers for {pref_lang}:")
-    for s in range(7, -1, -1):
+    print(f"[ml-service] Final Intersection Tiers for {pref_lang}:")
+    for s in range(active_pref_count, -1, -1):
         if tiers[s]:
-            print(f"  Score {s}: {len(tiers[s])} movies")
-            # Sort internally by base algorithm score
-            tiers[s].sort(key=lambda x: -x["score"])
+            print(f"  Match Count {s}/{active_pref_count}: {len(tiers[s])} movies")
+            # Sort internally by blended relevance + quality score.
+            def _tier_sort_key(rec):
+                movie = _movies_lookup.get(rec["movie_id"], {})
+                quality = rec.get("context", {}).get("quality_score", _compute_quality_score(movie))
+                base = rec.get("score", 0.0)
+                blended = (0.65 * base) + (0.35 * quality)
+                return (blended, base, quality, _safe_float(movie.get("popularity"), 0.0))
+
+            tiers[s].sort(key=_tier_sort_key, reverse=True)
             final_results.extend(tiers[s])
+
+    high_quality = [r for r in final_results if r.get("context", {}).get("passes_quality_floor")]
+    if len(high_quality) >= limit:
+        return high_quality[:limit]
+
+    if high_quality:
+        needed = limit - len(high_quality)
+        low_quality = [r for r in final_results if not r.get("context", {}).get("passes_quality_floor")]
+        return (high_quality + low_quality[:needed])[:limit]
 
     return final_results[:limit]
 
@@ -450,8 +525,8 @@ def _content_only_recommend(user_rated, exclude_ids, limit, user_profile):
 
 def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
     """
-    Genre-based fallback + preference boosts.
-    Incorporates both the genre preference scores AND profile-level preferences.
+    Enhanced genre-based fallback that intersects ALL user preferences.
+    Combines explicit genre ratings with profile preferences (genre, language, era).
     """
     if not user_prefs and not (user_profile.get("favoriteGenre") or
                                 user_profile.get("preferredLanguage") or
@@ -460,29 +535,57 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
 
     scored_movies = []
     fav_genre_lower = (user_profile.get("favoriteGenre") or "").lower().strip()
+    pref_lang = (user_profile.get("preferredLanguage") or "").lower().strip()
+    pref_era = (user_profile.get("favoriteEra") or "").lower().strip()
 
     for mid, movie in _movies_lookup.items():
         if mid in exclude_ids:
             continue
         genre_ids = _movie_genre_map.get(mid, [])
-
-        # Base score from TMDB popularity (normalized roughly to 0-3 range)
-        base_popularity = min(movie.get("popularity", 0) / 1000.0, 3.0)
         
-        # Score from explicit user ratings/preferences
+        # Calculate score based on how strongly the movie aligns
+        # with explicit genre preferences + profile preferences.
+        score_factors = []
+        matching_preferences = []
+
+        # 1. Explicit genre preference scores
         user_pref_score = sum(user_prefs.get(gid, 0) for gid in genre_ids)
+        if user_pref_score > 0:
+            score_factors.append(user_pref_score)
+            matching_genres = [_genre_names.get(gid, "") for gid in genre_ids if gid in (user_prefs or {})]
+            matching_preferences.extend(matching_genres)
 
-        # Baseline score combines popularity and explicit preferences
-        score = base_popularity + user_pref_score
-
-        # Additional boost from onboarding profile favoriteGenre
+        # 2. Profile favorite genre match
         if fav_genre_lower:
             movie_genre_lower = [_genre_names.get(gid, "").lower() for gid in genre_ids]
             if fav_genre_lower in movie_genre_lower:
-                score += 2.0  # Significant boost, but popularity still differentiates
+                score_factors.append(2.0)
+                matching_preferences.append(fav_genre_lower.title())
 
-        if score > 0:
-            scored_movies.append((mid, score, genre_ids))
+        # 3. Language preference match
+        if pref_lang and pref_lang != "en":
+            movie_lang = (movie.get("original_language") or "").lower()
+            if movie_lang == pref_lang:
+                score_factors.append(1.5)
+                matching_preferences.append(f"{pref_lang.upper()} language")
+
+        # 4. Era preference match
+        if pref_era:
+            release_year = str(movie.get("release_date", "")).split("-")[0]
+            if release_year and _is_era_match(release_year, pref_era):
+                score_factors.append(1.0)
+                matching_preferences.append(pref_era)
+
+        # Base popularity score (normalized)
+        base_popularity = min(movie.get("popularity", 0) / 1000.0, 3.0)
+        if base_popularity > 0:
+            score_factors.append(base_popularity)
+
+        # Final score is sum of all matching factors
+        final_score = sum(score_factors)
+
+        if final_score > 0:
+            scored_movies.append((mid, final_score, genre_ids, matching_preferences, movie))
 
     scored_movies.sort(key=lambda x: -x[1])
 
@@ -491,19 +594,50 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
 
     max_score = scored_movies[0][1] if scored_movies else 1
     results = []
-    for mid, score, genre_ids in scored_movies:
-        matching_genres = [_genre_names.get(gid, "") for gid in genre_ids if gid in (user_prefs or {})]
+    for mid, score, genre_ids, matching_prefs, movie in scored_movies[:limit * 3]:  # Get more candidates
+        # Get genre names for explanation
+        genre_names = [_genre_names.get(gid, "") for gid in genre_ids if gid in _genre_names]
+        
         results.append({
             "movie_id": mid,
             "score": round(score / max_score, 4),
-            "reason_type": "genre",
+            "reason_type": "genre_intersection",
             "context": {
-                "genres": matching_genres
+                "matching_genres": genre_names[:3],  # Top 3 genres
+                "matching_preferences": sorted(set(matching_prefs)),  # Unique preferences
+                "genre_count": len([g for g in genre_ids if g in (user_prefs or {})]),
+                "language_match": bool(pref_lang and movie.get("original_language", "").lower() == pref_lang),
+                "era_match": bool(pref_era and _is_era_match(str(movie.get("release_date", "")).split("-")[0], pref_era))
             }
         })
 
-    # Apply preference tiers to the ENTIRE pool so we don't prune out language matches early
     return _apply_preference_boosts(results, user_profile, limit)
+
+
+def _is_era_match(release_year, era_preference):
+    """Check if a movie's release year matches the user's era preference."""
+    if not release_year or not era_preference:
+        return False
+    
+    try:
+        year = int(release_year)
+        era = era_preference.lower()
+        
+        if era == "classic":
+            return year < 1970
+        elif era == "modern":
+            return year >= 2010
+        elif era.endswith("s"):
+            era_start = int(era[:4])
+            era_end = era_start + 9
+            return era_start <= year <= era_end
+        elif "-" in era:
+            start, end = map(int, era.split("-"))
+            return start <= year <= end
+    except (ValueError, AttributeError):
+        return False
+    
+    return False
 
 
 def _trending_fallback_recommend(exclude_ids, limit, user_profile):

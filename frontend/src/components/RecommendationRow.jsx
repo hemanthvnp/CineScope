@@ -59,7 +59,7 @@ function RecommendationRow({
         <div className="rec-row-strip" ref={stripRef}>
           {movies.map((movie, index) => (
             <MovieCard
-              key={movie.movie_id || movie.id || index}
+              key={`${movie.movie_id || movie.id || "movie"}-${index}`}
               movie={movie}
               explanation={movie.explanation}
               score={movie.score}

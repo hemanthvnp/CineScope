@@ -18,35 +18,44 @@ const uriCandidates = [
 
 let activeUriIndex = 0
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const hasSrvDnsError = (error) => {
   const message = error?.message || ""
   return /querySrv|ENOTFOUND|ETIMEOUT|ECONNREFUSED/i.test(message)
 }
 
 const connectDB = async () => {
-  const mongoUri = uriCandidates[activeUriIndex]
-
-  if (!mongoUri) {
-    console.error("[recommendation-service] MongoDB connection skipped: no connection URI configured")
-    return
+  if (!uriCandidates.length) {
+    throw new Error("No MongoDB URI configured for recommendation-service")
   }
 
-  try {
-    await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000
-    })
-    console.log("[recommendation-service] MongoDB Connected")
-  } catch (error) {
-    if (hasSrvDnsError(error) && activeUriIndex < uriCandidates.length - 1) {
-      activeUriIndex += 1
-      console.warn("[recommendation-service] MongoDB SRV lookup failed. Switching to fallback...")
-      setTimeout(connectDB, FALLBACK_RETRY_DELAY_MS)
-      return
-    }
+  while (true) {
+    const mongoUri = uriCandidates[activeUriIndex]
 
-    console.error("[recommendation-service] MongoDB connection failed. Retrying in 10s...", error.message)
-    setTimeout(connectDB, RETRY_DELAY_MS)
+    try {
+      await mongoose.connect(mongoUri, {
+        serverSelectionTimeoutMS: 5000
+      })
+      console.log("[recommendation-service] MongoDB Connected")
+      return
+    } catch (error) {
+      if (hasSrvDnsError(error) && activeUriIndex < uriCandidates.length - 1) {
+        activeUriIndex += 1
+        console.warn("[recommendation-service] MongoDB SRV lookup failed. Switching to fallback...")
+        await sleep(FALLBACK_RETRY_DELAY_MS)
+        continue
+      }
+
+      console.error("[recommendation-service] MongoDB connection failed. Retrying in 10s...", error.message)
+      await sleep(RETRY_DELAY_MS)
+    }
   }
 }
 
-module.exports = connectDB
+const isMongoConnected = () => mongoose.connection.readyState === 1
+
+module.exports = {
+  connectDB,
+  isMongoConnected
+}

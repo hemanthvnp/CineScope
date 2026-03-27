@@ -21,7 +21,7 @@ app.use("/api/users", userRoutes)
 app.use("/api/ratings", ratingRoutes)
 
 // ML Service Proxy - Hybrid recommendations
-// GET /api/recommendations/:userId calls the ML service first, falls back to genre-based
+// GET /api/recommendations/:userId calls ML service first, falls back to genre-based
 app.get("/api/recommendations/:userId", async (req, res) => {
   const { userId } = req.params
   const limit = parseInt(req.query.limit, 10) || 20
@@ -38,7 +38,7 @@ app.get("/api/recommendations/:userId", async (req, res) => {
     console.warn("[api-gateway] ML service unavailable, falling back to genre-based:", mlError.message)
   }
 
-  // Fallback: proxy to the Node.js recommendation service
+  // Fallback: proxy to Node.js recommendation service
   try {
     const fallbackUrl = `${RECOMMENDATION_SERVICE_URL}/api/recommendations/${userId}?limit=${limit}`
     const fallbackResponse = await axios.get(fallbackUrl, { timeout: 10000 })

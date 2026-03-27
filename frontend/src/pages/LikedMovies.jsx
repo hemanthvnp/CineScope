@@ -1,38 +1,35 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { getWatchlist, removeMovieFromWatchlist } from "../api/recommendations";
+import { getLikedMovies, removeMovieFromLiked } from "../api/recommendations";
 import "./Watchlist.css";
 
-export default function Watchlist() {
+export default function LikedMovies() {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const location = useLocation();
 
-  // Function to load movies from localStorage
   const loadMovies = async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await getWatchlist(null, "watchlist");
+      const response = await getLikedMovies();
       setMovies(response.watchlist || []);
     } catch (err) {
       setMovies([]);
-      setError(err?.response?.data?.error || err?.message || "Failed to load watchlist");
+      setError(err?.response?.data?.error || err?.message || "Failed to load liked movies");
     } finally {
       setLoading(false);
     }
   };
 
-  // Load movies whenever this page is navigated to
   useEffect(() => {
     loadMovies();
   }, [location]);
 
-  // Remove movie from watchlist
-  const deleteMovie = async (id) => {
+  const removeMovie = async (id) => {
     try {
-      await removeMovieFromWatchlist(id);
+      await removeMovieFromLiked(id);
     } catch (err) {
       setError(err?.response?.data?.error || err?.message || "Failed to remove movie");
     }
@@ -41,37 +38,30 @@ export default function Watchlist() {
 
   return (
     <div className="page-shell">
-
       <div className="watchlist-card">
-
-        {/* Header */}
         <div className="header">
           <div className="title-section">
-            <h1>Watchlist</h1>
-            <p>Save films you want to watch next in one curated shelf.</p>
+            <h1>Liked Movies</h1>
+            <p>Movies you liked in one dedicated collection.</p>
           </div>
         </div>
 
-        {/* Empty state */}
         {!loading && movies.length === 0 && (
           <div className="empty">
-            🎬 Your watchlist is empty  
+            ❤️ No liked movies yet
             <br />
-            Add movies from the home page.
+            Tap Like on any movie card.
           </div>
         )}
 
         {loading && (
-          <div className="empty">
-            Loading your watchlist...
-          </div>
+          <div className="empty">Loading your liked movies...</div>
         )}
 
         {!loading && error && (
           <div className="empty">{error}</div>
         )}
 
-        {/* Movie Grid */}
         <div className="watchlist-movie-grid">
           {movies.map((movie) => (
             <div key={movie.movie_id || movie.id} className="watchlist-movie-item">
@@ -87,17 +77,15 @@ export default function Watchlist() {
               <h3 className="watchlist-movie-title">{movie.title}</h3>
               <button
                 className="watchlist-delete-btn"
-                onClick={() => deleteMovie(movie.movie_id || movie.id)}
-                title="Remove from Watchlist"
+                onClick={() => removeMovie(movie.movie_id || movie.id)}
+                title="Remove from liked movies"
               >
                 ✕ Remove
               </button>
             </div>
           ))}
         </div>
-
       </div>
-
     </div>
   );
 }

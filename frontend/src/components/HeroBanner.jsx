@@ -42,7 +42,7 @@ function HeroBanner() {
           if (!imagePath) return null
 
           return (
-            <article key={movie.id} className="showcase-card" style={{ animationDelay: `${index * 35}ms` }}>
+            <article key={`${movie.id}-${index}`} className="showcase-card" style={{ animationDelay: `${index * 35}ms` }}>
               <img
                 src={`https://image.tmdb.org/t/p/w500${imagePath}`}
                 alt={movie.title}

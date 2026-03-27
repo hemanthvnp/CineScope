@@ -116,62 +116,87 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50):
 
     exclude_ids = exclude_ids or set()
 
-    # Select seed movies: user's highest-rated movies that exist in our index
-    seed_movies = []
-    for mid, rating in sorted(user_rated_movies.items(), key=lambda x: -x[1]):
-        if mid in _movie_id_index and rating >= 5:
-            seed_movies.append((mid, rating))
-        if len(seed_movies) >= 10:  # Cap at 10 seeds for performance
-            break
+    # Select seeds: separate into positive (rating >= 5) and negative (rating < 5)
+    pos_seeds = []
+    neg_seeds = []
+    
+    # Sort all rated movies by rating (descending)
+    sorted_ratings = sorted(user_rated_movies.items(), key=lambda x: -x[1])
+    
+    for mid, rating in sorted_ratings:
+        if mid not in _movie_id_index:
+            continue
+            
+        if rating >= 6:  # Strong positive signal
+            if len(pos_seeds) < 10:
+                pos_seeds.append((mid, rating))
+        elif rating <= 3:  # Strong negative signal
+            if len(neg_seeds) < 10:
+                neg_seeds.append((mid, rating))
+        # Ratings 4-5 are neutral and ignored for seeding
 
-    if not seed_movies:
+    if not pos_seeds and not neg_seeds:
         return []
 
-    # Compute similarity from each seed movie to all movies
-    # Weight by user's rating: a movie rated 9 has more influence than one rated 6
     n_movies = _tfidf_matrix.shape[0]
-    aggregated_scores = np.zeros(n_movies)
-    best_match = {}  # index -> seed movie_id with highest similarity
+    pos_scores = np.zeros(n_movies)
+    neg_scores = np.zeros(n_movies)
+    best_match = {}  # movie_id -> (seed_movie_id, similarity)
 
-    total_weight = 0
-    for seed_mid, rating in seed_movies:
+    # 1. Compute Positive Affinity
+    total_pos_weight = 0
+    for seed_mid, rating in pos_seeds:
         seed_idx = _movie_id_index[seed_mid]
-        # Compute cosine similarity between this seed and all movies
-        sim_scores = cosine_similarity(
-            _tfidf_matrix[seed_idx:seed_idx + 1],
-            _tfidf_matrix
-        ).flatten()
-
-        # Weight by the user's rating (normalized to 0-1)
+        sim_scores = cosine_similarity(_tfidf_matrix[seed_idx:seed_idx + 1], _tfidf_matrix).flatten()
+        
         weight = rating / 10.0
-        aggregated_scores += sim_scores * weight
-        total_weight += weight
+        pos_scores += sim_scores * weight
+        total_pos_weight += weight
 
-        # Track which seed movie contributed the most similarity
+        # Track best matches for explanations
         for idx in range(n_movies):
-            movie_id = _index_movie_id[idx]
-            if movie_id not in best_match or sim_scores[idx] > best_match[movie_id][1]:
-                best_match[movie_id] = (seed_mid, sim_scores[idx])
+            mid = _index_movie_id[idx]
+            if mid not in best_match or sim_scores[idx] > best_match[mid][1]:
+                best_match[mid] = (seed_mid, sim_scores[idx])
 
-    # Normalize by total weight
-    if total_weight > 0:
-        aggregated_scores /= total_weight
+    if total_pos_weight > 0:
+        pos_scores /= total_pos_weight
 
-    # Build results: (movie_id, normalized_score, best_match_movie_id)
+    # 2. Compute Negative Affinity (Penalty)
+    total_neg_weight = 0
+    for seed_mid, rating in neg_seeds:
+        seed_idx = _movie_id_index[seed_mid]
+        sim_scores = cosine_similarity(_tfidf_matrix[seed_idx:seed_idx + 1], _tfidf_matrix).flatten()
+        
+        # Invert weight: 1/10 rating means HIGHER penalty
+        weight = (10 - rating) / 10.0
+        neg_scores += sim_scores * weight
+        total_neg_weight += weight
+
+    if total_neg_weight > 0:
+        neg_scores /= total_neg_weight
+
+    # 3. Combine: Affinity - Penalty
+    # We use a penalty multiplier to make dislikes strong
+    PENALTY_MULTIPLIER = 1.25
+    final_scores = pos_scores - (PENALTY_MULTIPLIER * neg_scores)
+
+    # Build results: (movie_id, score, best_match_movie_id)
     results = []
     for idx in range(n_movies):
         movie_id = _index_movie_id[idx]
-        if movie_id in exclude_ids:
+        if movie_id in exclude_ids or movie_id in user_rated_movies:
             continue
-        if movie_id in user_rated_movies:
-            continue  # Don't recommend movies user already rated
 
-        score = float(aggregated_scores[idx])
-        if score > 0.01:  # Minimum threshold
+        score = float(final_scores[idx])
+        # If no positive matches, but strong negative matches, score will be negative.
+        # We cap it at 0.0 for the final results to keep them as "recommendations",
+        # but the sorting will naturally push penalized items to the very bottom.
+        if score > 0.01:
             match_mid = best_match.get(movie_id, (None, 0))[0]
             results.append((movie_id, score, match_mid))
 
-    # Sort by score descending and limit
+    # Sort and limit
     results.sort(key=lambda x: -x[1])
     return results[:limit]
 

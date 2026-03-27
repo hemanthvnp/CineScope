@@ -1,13 +1,16 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom"
 import Navbar from "./components/Navbar"
+import { SearchFilterProvider } from "./context/SearchFilterContext"
 import Footer from "./components/Footer"
 import Home from "./pages/Home"
 import Landing from "./pages/Landing"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Watchlist from "./pages/Watchlist"
+import LikedMovies from "./pages/LikedMovies"
 import Profile from "./pages/Profile"
 import MovieDetails from "./pages/MovieDetails"
+import SearchPage from "./pages/SearchPage"
 
 const AUTH_STORAGE_KEY = "cinescope-auth"
 const TOKEN_STORAGE_KEY = "cinescope-token"
@@ -38,24 +41,28 @@ function App() {
   const showFooter = location.pathname !== "/"
 
   return (
-    <div className="app-shell">
-      <Navbar />
-      <main className="app-main">
-        <div key={location.pathname} className="route-transition">
-          <Routes location={location}>
-            <Route path="/" element={<GuestOnlyRoute><Landing /></GuestOnlyRoute>} />
-            <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
-            <Route path="/register" element={<GuestOnlyRoute><Register /></GuestOnlyRoute>} />
-            <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-            <Route path="/watchlist" element={<ProtectedRoute><Watchlist /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/movie/:id" element={<ProtectedRoute><MovieDetails /></ProtectedRoute>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-      </main>
-      {showFooter && <Footer />}
-    </div>
+    <SearchFilterProvider>
+      <div className="app-shell">
+        <Navbar />
+        <main className="app-main">
+          <div key={location.pathname} className="route-transition">
+            <Routes location={location}>
+              <Route path="/" element={<GuestOnlyRoute><Landing /></GuestOnlyRoute>} />
+              <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
+              <Route path="/register" element={<GuestOnlyRoute><Register /></GuestOnlyRoute>} />
+              <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+              <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+              <Route path="/watchlist" element={<ProtectedRoute><Watchlist /></ProtectedRoute>} />
+              <Route path="/liked" element={<ProtectedRoute><LikedMovies /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/movie/:id" element={<ProtectedRoute><MovieDetails /></ProtectedRoute>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </main>
+        {showFooter && <Footer />}
+      </div>
+    </SearchFilterProvider>
   )
 }
 

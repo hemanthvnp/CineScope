@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
+import { useSearchFilter } from "../context/SearchFilterContext"
+import EnhancedSearchBar from "./EnhancedSearchBar"
+import "./EnhancedSearchBar.css"
 
 const AUTH_STORAGE_KEY = "cinescope-auth"
 const TOKEN_STORAGE_KEY = "cinescope-token"
 
 const getAuthState = () => {
-  return localStorage.getItem(AUTH_STORAGE_KEY) === "true" && Boolean(localStorage.getItem(TOKEN_STORAGE_KEY))
+  return (
+    localStorage.getItem(AUTH_STORAGE_KEY) === "true" &&
+    Boolean(localStorage.getItem(TOKEN_STORAGE_KEY))
+  )
 }
 
 function Navbar() {
   const location = useLocation()
   const navigate = useNavigate()
+
   const [menuOpen, setMenuOpen] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => getAuthState()
-  )
+  const [isAuthenticated, setIsAuthenticated] = useState(() => getAuthState())
 
   useEffect(() => {
     setIsAuthenticated(getAuthState())
@@ -27,7 +32,6 @@ function Navbar() {
     }
 
     window.addEventListener("storage", handleStorage)
-
     return () => window.removeEventListener("storage", handleStorage)
   }, [])
 
@@ -45,6 +49,10 @@ function Navbar() {
         <h2 className="site-logo">CineScope</h2>
       </Link>
 
+      {/* ENHANCED SEARCH BAR (show on all pages when logged in) */}
+      {isAuthenticated && <EnhancedSearchBar />}
+
+      {/* PUBLIC LINKS */}
       {!isAuthenticated && (
         <div className="site-links">
           <Link to="/" className="site-link">About</Link>
@@ -53,6 +61,7 @@ function Navbar() {
         </div>
       )}
 
+      {/* AUTHENTICATED MENU */}
       {isAuthenticated && (
         <>
           <button
@@ -73,15 +82,21 @@ function Navbar() {
 
           <aside className={`side-menu ${menuOpen ? "open" : ""}`}>
             <h3>Menu</h3>
+
             <Link to="/home" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Home
             </Link>
+
             <Link to="/watchlist" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Watchlist
+            </Link>
+            <Link to="/liked" className="side-menu-link" onClick={() => setMenuOpen(false)}>
+              Liked Movies
             </Link>
             <Link to="/profile" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Profile
             </Link>
+
             <button
               type="button"
               className="side-menu-button"

@@ -1,3 +1,59 @@
+/* Add styles for improved add-to-watchlist button layout */
+.add-watchlist-btn-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+.add-watchlist-btn {
+  font-size: 1rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 24px;
+  background: #222;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.add-watchlist-btn:hover {
+  background: #ff3b30;
+  color: #fff;
+}
+.add-watchlist-btn.added-feedback {
+  background: #1db954;
+  color: #fff;
+  transition: background 0.4s ease;
+}
+.add-watchlist-btn.added-feedback:hover {
+  background: #16a34a;
+}
+/* Add hover overlay for add-to-watchlist button */
+.movie-poster-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.add-watchlist-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.movie-poster-wrapper:hover .add-watchlist-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+.add-watchlist-btn:hover {
+  background: #ff3b30;
+  color: #fff;
+}
 :root {
   color-scheme: dark;
   --bg: #080808;
@@ -848,6 +904,21 @@ p {
   box-shadow: 0 14px 24px rgba(0, 0, 0, 0.42);
 }
 
+.movie-title {
+  width: 160px;
+  font-size: 0.85rem;
+  color: #fff;
+  margin: 0.6rem 0 0 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  font-weight: 500;
+}
+
 .skeleton-title {
   height: 24px;
   width: 240px;
@@ -908,6 +979,13 @@ p {
   background: linear-gradient(145deg, rgba(23, 23, 23, 0.95), rgba(11, 11, 11, 0.95));
   box-shadow: var(--shadow);
   animation: sectionIn 0.55s ease;
+  min-height: 400px;
+}
+
+.profile-page {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 .page-shell h1 {
@@ -1379,6 +1457,66 @@ p {
   overflow: hidden;
 }
 
+.rec-card-hover-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(0, 0, 0, 0.52);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 3;
+}
+
+.rec-card:hover .rec-card-hover-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rec-card-action-btn {
+  width: 130px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(15, 15, 15, 0.9);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.42rem 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.rec-card-action-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 59, 48, 0.65);
+  background: rgba(255, 59, 48, 0.22);
+}
+
+.rec-card-action-btn.active {
+  border-color: rgba(34, 197, 94, 0.75);
+  background: rgba(34, 197, 94, 0.24);
+}
+
+.rec-card-action-btn--like:hover {
+  border-color: rgba(244, 63, 94, 0.75);
+  background: rgba(244, 63, 94, 0.22);
+}
+
+.rec-card-action-btn--dislike:hover {
+  border-color: rgba(161, 161, 170, 0.75);
+  background: rgba(161, 161, 170, 0.22);
+}
+
+.dislike-btn-text:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
 .rec-card-poster {
   width: 100%;
   height: 240px;
@@ -1441,7 +1579,8 @@ p {
   line-height: 1.3;
   margin-bottom: 0.35rem;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
