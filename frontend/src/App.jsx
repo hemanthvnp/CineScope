@@ -6,6 +6,7 @@ import Landing from "./pages/Landing"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Watchlist from "./pages/Watchlist"
+import LikedMovies from "./pages/LikedMovies"
 import Profile from "./pages/Profile"
 import MovieDetails from "./pages/MovieDetails"
 
@@ -48,6 +49,7 @@ function App() {
             <Route path="/register" element={<GuestOnlyRoute><Register /></GuestOnlyRoute>} />
             <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
             <Route path="/watchlist" element={<ProtectedRoute><Watchlist /></ProtectedRoute>} />
+            <Route path="/liked" element={<ProtectedRoute><LikedMovies /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/movie/:id" element={<ProtectedRoute><MovieDetails /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />

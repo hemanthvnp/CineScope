@@ -134,13 +134,19 @@ def get_user_rated_movies(user_id: str):
 
     rated = {}
 
-    # From watchlist
+    # From watchlist (rated + disliked)
     watchlist = list(db.userwatchlists.find(
-        {"user_id": ObjectId(user_id), "status": "rated", "rating": {"$ne": None}},
-        {"_id": 0, "movie_id": 1, "rating": 1}
+        {
+            "user_id": ObjectId(user_id),
+            "status": {"$in": ["rated", "disliked"]}
+        },
+        {"_id": 0, "movie_id": 1, "rating": 1, "status": 1}
     ))
     for w in watchlist:
-        rated[w["movie_id"]] = float(w["rating"])
+        if w["status"] == "disliked":
+            rated[w["movie_id"]] = 1.0  # Treat as strongest possible negative signal
+        elif w.get("rating") is not None:
+            rated[w["movie_id"]] = float(w["rating"])
 
     # From ratings collection
     if "ratings" in db.list_collection_names():

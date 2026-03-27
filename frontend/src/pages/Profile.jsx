@@ -131,7 +131,7 @@ function Profile() {
   }
 
   return (
-    <section className="page-shell">
+    <section className="page-shell profile-page">
       <h1 className="gold-accent">Cinephile Profile</h1>
 
       <div className="profile-hero-card">

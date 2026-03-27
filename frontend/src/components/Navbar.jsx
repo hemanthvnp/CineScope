@@ -131,7 +131,9 @@ function Navbar({ onSearch, onFilter }) {
             <Link to="/watchlist" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Watchlist
             </Link>
-
+            <Link to="/liked" className="side-menu-link" onClick={() => setMenuOpen(false)}>
+              Liked Movies
+            </Link>
             <Link to="/profile" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Profile
             </Link>

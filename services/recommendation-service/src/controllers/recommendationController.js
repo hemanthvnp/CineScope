@@ -1,6 +1,7 @@
 const recommendationService = require("../services/recommendationService")
 const { validateUserId, sanitizeRecommendationOptions, validateScore, validateGenreId } = require("../utils/validators")
 const logger = require("../utils/logger")
+const { isMongoConnected } = require("../config/db")
 
 /**
  * Recommendation Controller
@@ -236,6 +237,12 @@ const getAllGenres = async (req, res) => {
 const addToWatchlist = async (req, res) => {
   try {
     logger.request(req, "addToWatchlist")
+    if (!isMongoConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: "Database unavailable. Please try again shortly."
+      })
+    }
     const { userId } = req.params
     const { movie_id, status = "watchlist", rating } = req.body
 
@@ -254,7 +261,7 @@ const addToWatchlist = async (req, res) => {
       })
     }
 
-    const validStatuses = ["watchlist", "watched", "rated"]
+    const validStatuses = ["watchlist", "watched", "rated", "liked", "disliked"]
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -286,7 +293,99 @@ const addToWatchlist = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: "Failed to update watchlist"
+      error: "Failed to update watchlist",
+      details: error.message
+    })
+  }
+}
+
+/**
+ * GET /recommendations/:userId/watchlist
+ * Get a user's watchlist items
+ */
+const getWatchlist = async (req, res) => {
+  try {
+    logger.request(req, "getWatchlist")
+    if (!isMongoConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: "Database unavailable. Please try again shortly."
+      })
+    }
+    const { userId } = req.params
+    const { limit, offset, status } = req.query
+
+    const validation = validateUserId(userId)
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error
+      })
+    }
+
+    const result = await recommendationService.getUserWatchlist(userId, {
+      limit: parseInt(limit, 10) || 100,
+      offset: parseInt(offset, 10) || 0,
+      status
+    })
+
+    return res.json(result)
+  } catch (error) {
+    logger.error("Failed to get watchlist", {
+      userId: req.params.userId,
+      error: error.message
+    })
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch watchlist"
+    })
+  }
+}
+
+/**
+ * DELETE /recommendations/:userId/watchlist/:movieId
+ * Remove a movie from user's watchlist
+ */
+const removeFromWatchlist = async (req, res) => {
+  try {
+    logger.request(req, "removeFromWatchlist")
+    if (!isMongoConnected()) {
+      return res.status(503).json({
+        success: false,
+        error: "Database unavailable. Please try again shortly."
+      })
+    }
+    const { userId, movieId } = req.params
+
+    const validation = validateUserId(userId)
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error
+      })
+    }
+
+    const parsedMovieId = parseInt(movieId, 10)
+    if (isNaN(parsedMovieId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Valid movieId is required"
+      })
+    }
+
+    const result = await recommendationService.removeFromWatchlist(userId, parsedMovieId)
+    return res.json(result)
+  } catch (error) {
+    logger.error("Failed to remove watchlist item", {
+      userId: req.params.userId,
+      movieId: req.params.movieId,
+      error: error.message
+    })
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to remove watchlist item"
     })
   }
 }
@@ -297,5 +396,7 @@ module.exports = {
   updateUserPreferences,
   updateSinglePreference,
   getAllGenres,
-  addToWatchlist
+  addToWatchlist,
+  getWatchlist,
+  removeFromWatchlist
 }

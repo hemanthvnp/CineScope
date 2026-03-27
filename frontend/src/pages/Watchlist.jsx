@@ -1,15 +1,27 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { getWatchlist, removeMovieFromWatchlist } from "../api/recommendations";
 import "./Watchlist.css";
 
 export default function Watchlist() {
   const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const location = useLocation();
 
   // Function to load movies from localStorage
-  const loadMovies = () => {
-    const stored = localStorage.getItem('cinescope-watchlist');
-    setMovies(stored ? JSON.parse(stored) : []);
+  const loadMovies = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await getWatchlist(null, "watchlist");
+      setMovies(response.watchlist || []);
+    } catch (err) {
+      setMovies([]);
+      setError(err?.response?.data?.error || err?.message || "Failed to load watchlist");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Load movies whenever this page is navigated to
@@ -18,10 +30,13 @@ export default function Watchlist() {
   }, [location]);
 
   // Remove movie from watchlist
-  const deleteMovie = (id) => {
-    const updated = movies.filter((movie) => movie.id !== id);
-    setMovies(updated);
-    localStorage.setItem('cinescope-watchlist', JSON.stringify(updated));
+  const deleteMovie = async (id) => {
+    try {
+      await removeMovieFromWatchlist(id);
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.message || "Failed to remove movie");
+    }
+    setMovies((prev) => prev.filter((movie) => (movie.movie_id || movie.id) !== id));
   };
 
   return (
@@ -38,7 +53,7 @@ export default function Watchlist() {
         </div>
 
         {/* Empty state */}
-        {movies.length === 0 && (
+        {!loading && movies.length === 0 && (
           <div className="empty">
             🎬 Your watchlist is empty  
             <br />
@@ -46,10 +61,20 @@ export default function Watchlist() {
           </div>
         )}
 
+        {loading && (
+          <div className="empty">
+            Loading your watchlist...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="empty">{error}</div>
+        )}
+
         {/* Movie Grid */}
         <div className="watchlist-movie-grid">
           {movies.map((movie) => (
-            <div key={movie.id} className="watchlist-movie-item">
+            <div key={movie.movie_id || movie.id} className="watchlist-movie-item">
               {movie.poster_path ? (
                 <img
                   src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
@@ -62,7 +87,7 @@ export default function Watchlist() {
               <h3 className="watchlist-movie-title">{movie.title}</h3>
               <button
                 className="watchlist-delete-btn"
-                onClick={() => deleteMovie(movie.id)}
+                onClick={() => deleteMovie(movie.movie_id || movie.id)}
                 title="Remove from Watchlist"
               >
                 ✕ Remove

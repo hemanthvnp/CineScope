@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import api from "../api/axios"
 import { useNavigate } from "react-router-dom"
 import SkeletonRow from "./SkeletonRow"
+import { addMovieToWatchlist, addMovieToLiked } from "../api/recommendations"
 
 function MovieRow({ title, search = "", filters = {} }) {
   const [movies, setMovies] = useState([])
@@ -112,12 +113,38 @@ function MovieRow({ title, search = "", filters = {} }) {
               <button
                 className={`add-watchlist-btn ${addedMovies.has(movie.id) ? 'added-feedback' : ''}`}
                 title="Add to Watchlist"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  addToWatchlist(movie)
+                onClick={async e => {
+                  e.stopPropagation();
+                  try {
+                    await addMovieToWatchlist(movie.id, "watchlist");
+                    setAddedMovies(new Set([...addedMovies, movie.id]));
+                    setTimeout(() => {
+                      setAddedMovies(prev => {
+                        const updated = new Set(prev);
+                        updated.delete(movie.id);
+                        return updated;
+                      });
+                    }, 1500);
+                  } catch (err) {
+                    console.error("Failed to add to watchlist:", err?.response?.data || err?.message || err);
+                  }
                 }}
               >
                 {addedMovies.has(movie.id) ? "✓ Added!" : "Add to Watchlist"}
+              </button>
+              <button
+                className="add-watchlist-btn"
+                title="Like movie"
+                onClick={async e => {
+                  e.stopPropagation();
+                  try {
+                    await addMovieToLiked(movie.id);
+                  } catch (err) {
+                    console.error("Failed to like movie:", err?.response?.data || err?.message || err);
+                  }
+                }}
+              >
+                ♥ Like
               </button>
             </div>
           </div>

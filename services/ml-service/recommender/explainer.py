@@ -51,16 +51,27 @@ def generate_explanation(movie, reason_type, context=None):
             "type": "collaborative"
         }
 
-    elif reason_type == "genre":
-        genres = context.get("genres", [])
-        if genres:
-            genre_str = ", ".join(genres[:3])
+    elif reason_type == "genre_intersection":
+        matching_prefs = context.get("matching_preferences", [])
+        if matching_prefs:
             return {
-                "reason": f"Similar genres: {genre_str}",
+                "reason": f"Matches your {', '.join(matching_prefs[:2])}",
                 "type": "genre_match"
             }
         return {
-            "reason": "Matches your genre preferences",
+            "reason": "Based on your profile preferences",
+            "type": "genre_match"
+        }
+
+    elif reason_type == "genre":
+        genres = context.get("genres", [])
+        if genres:
+            return {
+                "reason": f"Matches your interest in {', '.join(genres[:3])}",
+                "type": "genre_match"
+            }
+        return {
+            "reason": "Based on your genre preferences",
             "type": "genre_match"
         }
 
@@ -71,42 +82,33 @@ def generate_explanation(movie, reason_type, context=None):
         }
 
     elif reason_type == "hybrid":
-        # Determine the dominant signal for the explanation
-        content_score = context.get("content_score", 0)
         collab_score = context.get("collab_score", 0)
-
-        if content_score > collab_score and context.get("source_movie_title"):
+        content_score = context.get("content_score", 0)
+        
+        if collab_score > content_score:
             return {
-                "reason": f"Because you liked {context['source_movie_title']}",
-                "type": "content_similarity"
-            }
-        elif collab_score > 0:
-            user_count = context.get("similar_users_count", 0)
-            if user_count > 1:
-                return {
-                    "reason": f"Popular among {user_count} similar users",
-                    "type": "collaborative"
-                }
-            return {
-                "reason": "Popular among similar users",
+                "reason": "Similar users with similar taste also liked this",
                 "type": "collaborative"
             }
         else:
-            genres = context.get("genres", [])
-            if genres:
-                return {
-                    "reason": f"Similar genres: {', '.join(genres[:3])}",
-                    "type": "genre_match"
-                }
+            source = context.get("source_movie_title", "your favorites")
             return {
-                "reason": "Recommended for you",
-                "type": "general"
+                "reason": f"Because you liked {source}",
+                "type": "content_similarity"
             }
 
-    return {
-        "reason": "Recommended for you",
-        "type": "general"
-    }
+    elif reason_type == "language_discovery":
+        lang = context.get("discovery_lang", "your preferred language")
+        return {
+            "reason": f"Popular in {lang.upper()} cinema",
+            "type": "language_preference"
+        }
+
+    else:
+        return {
+            "reason": "Recommended for you",
+            "type": "general"
+        }
 
 
 def explain_batch(recommendations, movies_lookup, genre_names, movie_genre_map):

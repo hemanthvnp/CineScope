@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import api from "../api/axios"
 import StarRating from "../components/StarRating"
 import { submitRating, getMovieRatings } from "../api/ratings"
+import { addMovieToDisliked as dislikeMovieApi } from "../api/recommendations"
 
 function MovieDetails() {
   const { id } = useParams()
@@ -66,6 +67,24 @@ function MovieDetails() {
     }
   }
 
+  const handleDislike = async () => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setRatingStatus("")
+
+    try {
+      await dislikeMovieApi(parseInt(id, 10))
+      setUserRating(1) // Set to 1 as a visual indicator for "Strong Dislike"
+      setRatingStatus("Feedback saved! We'll show you fewer movies like this.")
+    } catch (error) {
+      console.error("Failed to dislike movie:", error)
+      setRatingStatus("Failed to save feedback")
+    } finally {
+      setIsSubmitting(false)
+      setTimeout(() => setRatingStatus(""), 4000)
+    }
+  }
+
   if (!movie) return <div className="page-shell">Loading...</div>
 
   return (
@@ -104,7 +123,27 @@ function MovieDetails() {
 
           {/* User rating widget */}
           <div className="movie-details-rate">
-            <h3>Your Rating</h3>
+            <div className="movie-details-rate-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h3 style={{ margin: 0 }}>Your Rating</h3>
+              <button 
+                className="dislike-btn-text" 
+                onClick={handleDislike}
+                disabled={isSubmitting}
+                title="Not for me - show fewer like this"
+                style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#aaa',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                👎 Not for me
+              </button>
+            </div>
             <StarRating
               currentRating={userRating}
               onRate={handleRate}
@@ -112,7 +151,7 @@ function MovieDetails() {
               size={1.6}
             />
             {ratingStatus && (
-              <p className="movie-details-rate-status">{ratingStatus}</p>
+              <p className="movie-details-rate-status" style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ffcc00' }}>{ratingStatus}</p>
             )}
           </div>
         </div>
@@ -121,4 +160,4 @@ function MovieDetails() {
   )
 }
 
-export default MovieDetails
+export default MovieDetails

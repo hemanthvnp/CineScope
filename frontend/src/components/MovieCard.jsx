@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom"
+import { useState } from "react"
+import { addMovieToWatchlist, addMovieToLiked, addMovieToDisliked } from "../api/recommendations"
 
 /**
  * MovieCard Component
@@ -14,6 +16,9 @@ import { useNavigate } from "react-router-dom"
  */
 function MovieCard({ movie, explanation, score, showExplanation = true }) {
   const navigate = useNavigate()
+  const [watchlistAdded, setWatchlistAdded] = useState(false)
+  const [likedAdded, setLikedAdded] = useState(false)
+  const [dislikedAdded, setDislikedAdded] = useState(false)
 
   const movieId = movie.movie_id || movie.id
   const posterUrl = movie.poster_path
@@ -23,6 +28,45 @@ function MovieCard({ movie, explanation, score, showExplanation = true }) {
 
   const handleClick = () => {
     if (movieId) navigate(`/movie/${movieId}`)
+  }
+
+  const handleAddToWatchlist = async (e) => {
+    e.stopPropagation()
+    if (!movieId) return
+
+    try {
+      await addMovieToWatchlist(movieId, "watchlist")
+      setWatchlistAdded(true)
+      setTimeout(() => setWatchlistAdded(false), 1500)
+    } catch (err) {
+      console.error("Failed to add to watchlist:", err?.response?.data || err?.message || err)
+    }
+  }
+
+  const handleLikeMovie = async (e) => {
+    e.stopPropagation()
+    if (!movieId) return
+
+    try {
+      await addMovieToLiked(movieId)
+      setLikedAdded(true)
+      setTimeout(() => setLikedAdded(false), 1500)
+    } catch (err) {
+      console.error("Failed to like movie:", err?.response?.data || err?.message || err)
+    }
+  }
+
+  const handleDislikeMovie = async (e) => {
+    e.stopPropagation()
+    if (!movieId) return
+
+    try {
+      await addMovieToDisliked(movieId)
+      setDislikedAdded(true)
+      setTimeout(() => setDislikedAdded(false), 1500)
+    } catch (err) {
+      console.error("Failed to dislike movie:", err?.response?.data || err?.message || err)
+    }
   }
 
   if (!posterUrl) return null
@@ -36,6 +80,32 @@ function MovieCard({ movie, explanation, score, showExplanation = true }) {
           className="rec-card-poster"
           loading="lazy"
         />
+        <div className="rec-card-hover-actions">
+          <button
+            type="button"
+            className={`rec-card-action-btn ${watchlistAdded ? "active" : ""}`}
+            onClick={handleAddToWatchlist}
+            title="Add to Watchlist"
+          >
+            {watchlistAdded ? "✓ Watchlist" : "+ Watchlist"}
+          </button>
+          <button
+            type="button"
+            className={`rec-card-action-btn rec-card-action-btn--like ${likedAdded ? "active" : ""}`}
+            onClick={handleLikeMovie}
+            title="Like movie"
+          >
+            {likedAdded ? "♥ Liked" : "♥ Like"}
+          </button>
+          <button
+            type="button"
+            className={`rec-card-action-btn rec-card-action-btn--dislike ${dislikedAdded ? "active" : ""}`}
+            onClick={handleDislikeMovie}
+            title="I don't like this"
+          >
+            {dislikedAdded ? "👎 Disliked" : "👎 Dislike"}
+          </button>
+        </div>
         <div className="rec-card-rating-badge">⭐ {rating}</div>
         {score > 0 && (
           <div className="rec-card-score-bar">

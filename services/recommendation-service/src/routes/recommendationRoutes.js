@@ -10,6 +10,7 @@ const recommendationController = require("../controllers/recommendationControlle
  * Routes:
  * - GET /genres - Get all available genres
  * - GET /:userId - Get movie recommendations for a user
+ * - GET /:userId/genre-fallback - Get genre-based fallback recommendations
  * - GET /:userId/preferences - Get user's genre preferences
  * - PUT /:userId/preferences - Bulk update user preferences
  * - PATCH /:userId/preferences/:genreId - Update single preference
@@ -22,6 +23,9 @@ router.get("/genres", recommendationController.getAllGenres)
 // Get recommendations for a user
 router.get("/:userId", recommendationController.getRecommendations)
 
+// Get genre-based fallback recommendations
+router.get("/:userId/genre-fallback", recommendationController.getRecommendations)
+
 // Get user's current preferences
 router.get("/:userId/preferences", recommendationController.getUserPreferences)
 
@@ -33,5 +37,7 @@ router.patch("/:userId/preferences/:genreId", recommendationController.updateSin
 
 // Add movie to user's watchlist
 router.post("/:userId/watchlist", recommendationController.addToWatchlist)
+router.get("/:userId/watchlist", recommendationController.getWatchlist)
+router.delete("/:userId/watchlist/:movieId", recommendationController.removeFromWatchlist)
 
 module.exports = router

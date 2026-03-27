@@ -9,6 +9,7 @@
 const express = require("express")
 const cors = require("cors")
 const recommendationRoutes = require("./routes/recommendationRoutes")
+const { isMongoConnected } = require("./config/db")
 
 const app = express()
 
@@ -24,9 +25,11 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get("/health", (req, res) => {
+  const dbConnected = isMongoConnected()
   res.json({
     service: "recommendation-service",
-    status: "healthy",
+    status: dbConnected ? "healthy" : "degraded",
+    db: dbConnected ? "connected" : "disconnected",
     timestamp: new Date().toISOString(),
     version: "1.0.0"
   })
