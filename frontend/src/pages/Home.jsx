@@ -107,16 +107,19 @@ function Home() {
     const fetchRecommendations = async () => {
       setLoadingHybrid(true)
       try {
-        const data = await getHybridRecommendations(profile.id, 40)
+        const data = await getHybridRecommendations(profile.id, 60)
         const recs = data.recommendations || []
 
-        setHybridRecs(recs.slice(0, 15))
-
+        // "Because You Liked..." - Pure content similarity (liked movies)
         const contentRecs = recs.filter(r => r.explanation?.type === "content_similarity")
-        setBecauseYouLiked(contentRecs.slice(0, 10))
+        setBecauseYouLiked(contentRecs.slice(0, 20))
+
+        // "Recommended For You" - Profile matches, community trends, and language discovery
+        const matchRecs = recs.filter(r => r.explanation?.type !== "content_similarity")
+        setHybridRecs(matchRecs.slice(0, 20))
 
         const genreBasedRecs = recs.filter(r => r.explanation?.type === "genre_match")
-        setGenreRecs(genreBasedRecs.slice(0, 10))
+        setGenreRecs(genreBasedRecs.slice(0, 15))
       } catch (error) {
         console.error("Failed to fetch recommendations:", error)
         setHybridRecs([])
@@ -302,10 +305,22 @@ function Home() {
           title="🎯 Recommended For You"
           movies={applyFilters(hybridRecs)}
           loading={loadingHybrid}
-          emptyMessage="Rate some movies to get personalized recommendations!"
+          emptyMessage="Complete your profile to get better matches!"
           showExplanation={true}
         />
       </div>
+
+      {/* ❤️ Because You Liked... */}
+      {becauseYouLiked.length > 0 && (
+        <div className="reveal-on-scroll">
+          <RecommendationRow
+            title="❤️ Because You Liked..."
+            movies={applyFilters(becauseYouLiked)}
+            loading={loadingHybrid}
+            showExplanation={true}
+          />
+        </div>
+      )}
 
       {/* 🎬 Now Playing - Pure TMDB */}
       <div className="reveal-on-scroll">
@@ -341,18 +356,6 @@ function Home() {
           showExplanation={false}
         />
       </div>
-
-      {/* ❤️ Because You Liked X */}
-      {becauseYouLiked.length > 0 && (
-        <div className="reveal-on-scroll">
-          <RecommendationRow
-            title="❤️ Because You Liked..."
-            movies={applyFilters(becauseYouLiked)}
-            loading={false}
-            showExplanation={true}
-          />
-        </div>
-      )}
 
       {/* 🎭 Based on Your Favorite Genres */}
       {genreRecs.length > 0 && (
