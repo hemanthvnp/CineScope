@@ -1,110 +1,114 @@
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
+import "./EnhancedSearchBar.css"
 
 const EnhancedSearchBar = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { search, setSearch, year, setYear, genre, setGenre, setFilters, clearSearch } = useSearchFilter()
+  const { 
+    search, setSearch, 
+    year, setYear, 
+    genre, setGenre, 
+    language, setLanguage, 
+    genresList, languagesList,
+    setFilters, clearSearch 
+  } = useSearchFilter()
+  
   const [suggestions, setSuggestions] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loading, setLoading] = useState(false)
   const [recentSearches, setRecentSearches] = useState([])
   const [showFilters, setShowFilters] = useState(false)
-  const [genresList, setGenresList] = useState([])
   const searchRef = useRef(null)
   const inputRef = useRef(null)
-
-  // Fetch genres list
-  useEffect(() => {
-    const fetchGenres = async () => {
-      try {
-        const response = await api.get("/movies/genres")
-        setGenresList(response.data.genres || [])
-      } catch (error) {
-        console.error("Failed to fetch genres:", error)
-      }
-    }
-    fetchGenres()
-  }, [])
 
   // Clear search bar when navigating to a non-search page
   useEffect(() => {
     if (location.pathname !== "/search") {
       clearSearch()
     }
-  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.pathname])
 
-  // Load recent searches from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("cinescope-recent-searches")
-    if (saved) {
-      try {
-        setRecentSearches(JSON.parse(saved))
-      } catch (e) {
-        console.error("Failed to load recent searches:", e)
-      }
-    }
-  }, [])
-
-  // Fetch search suggestions
-  useEffect(() => {
-    if (search.length < 2) {
-      setSuggestions([])
-      return
-    }
-
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      try {
-        const response = await api.get("/movies/search", {
-          params: { query: search, page: 1 }
-        })
-        setSuggestions(response.data.results?.slice(0, 8) || [])
-      } catch (error) {
-        console.error("Failed to fetch suggestions:", error)
-        setSuggestions([])
-      } finally {
-        setLoading(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [search])
-
-  // Close suggestions when clicking outside
+  // Click outside listener
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setShowSuggestions(false)
+        setShowFilters(false)
       }
     }
-
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  const handleSearch = (searchTerm = search) => {
-    // allow search if we have a query OR if filters are active
-    if (!searchTerm.trim() && !year && !genre) return
+  // Debounced search for suggestions
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (search.trim().length >= 2) {
+        setLoading(true)
+        try {
+          const response = await api.get("/movies/search", {
+            params: { query: search, page: 1 }
+          })
+          setSuggestions((response.data.results || []).slice(0, 6))
+        } catch (error) {
+          console.error("Suggestions failed:", error)
+        } finally {
+          setLoading(false)
+        }
+      } else {
+        setSuggestions([])
+      }
+    }, 400)
 
-    // Add to recent searches
-    const newRecent = [searchTerm, ...recentSearches.filter(s => s !== searchTerm)].slice(0, 5)
-    setRecentSearches(newRecent)
-    localStorage.setItem("cinescope-recent-searches", JSON.stringify(newRecent))
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // Load recent searches from local storage
+  useEffect(() => {
+    const recent = JSON.parse(localStorage.getItem("cinescope-recent-searches") || "[]")
+    setRecentSearches(recent)
+  }, [])
+
+  const handleSearch = (searchTerm = search, currentFilters = {}) => {
+    const activeFilters = {
+      year: currentFilters.year ?? year,
+      genre: currentFilters.genre ?? genre,
+      language: currentFilters.language ?? language
+    }
+
+    // allow search if we have a query OR if filters are active
+    if (!searchTerm.trim() && !activeFilters.year && !activeFilters.genre && !activeFilters.language) return
+
+    // Add to recent searches if there's a query
+    if (searchTerm.trim()) {
+      const newRecent = [searchTerm, ...recentSearches.filter(s => s !== searchTerm)].slice(0, 5)
+      setRecentSearches(newRecent)
+      localStorage.setItem("cinescope-recent-searches", JSON.stringify(newRecent))
+    }
 
     // Apply filters and navigate
-    setFilters({ year, genre })
-    navigate(`/search?q=${encodeURIComponent(searchTerm)}&year=${year}&genre=${genre}`)
+    // Ensure context is updated
+    if (currentFilters.year !== undefined) setYear(currentFilters.year)
+    if (currentFilters.genre !== undefined) setGenre(currentFilters.genre)
+    if (currentFilters.language !== undefined) setLanguage(currentFilters.language)
+    
+    setFilters(activeFilters)
+    
+    // Navigate to search page
+    navigate(`/search?q=${encodeURIComponent(searchTerm)}&year=${activeFilters.year}&genre=${activeFilters.genre}&language=${activeFilters.language}`)
+    
+    // Close panels
     setShowSuggestions(false)
-    setShowFilters(false)
     inputRef.current?.blur()
   }
 
   const handleSuggestionClick = (movie) => {
     navigate(`/movie/${movie.id}`)
     setShowSuggestions(false)
+    setShowFilters(false)
   }
 
   const handleRecentSearchClick = (term) => {
@@ -115,8 +119,10 @@ const EnhancedSearchBar = () => {
   const handleKeyPress = (e) => {
     if (e.key === "Enter") {
       handleSearch()
+      setShowFilters(false)
     } else if (e.key === "Escape") {
       setShowSuggestions(false)
+      setShowFilters(false)
       inputRef.current?.blur()
     }
   }
@@ -124,7 +130,12 @@ const EnhancedSearchBar = () => {
   const clearFilters = () => {
     setYear("")
     setGenre("")
-    setFilters({ year: "", genre: "" })
+    setLanguage("")
+    setFilters({ year: "", genre: "", language: "" })
+    // If we are on search page, navigate to reflect cleared filters
+    if (location.pathname === "/search") {
+      navigate(`/search?q=${encodeURIComponent(search)}`)
+    }
   }
 
   const clearRecentSearches = () => {
@@ -168,12 +179,12 @@ const EnhancedSearchBar = () => {
             className="filter-toggle-btn"
             onClick={() => setShowFilters(!showFilters)}
             aria-label="Toggle filters"
-            title={(year || genre) ? "Filters applied" : "Show filters"}
+            title={(year || genre || language) ? "Filters applied" : "Show filters"}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path d="M3 4h18v2H3zM3 10h12v2H3zM3 16h6v2H3z" strokeWidth="2" />
             </svg>
-            {(year || genre) && <span className="filter-indicator" />}
+            {(year || genre || language) && <span className="filter-indicator" />}
           </button>
         </div>
 
@@ -274,7 +285,7 @@ const EnhancedSearchBar = () => {
               type="number"
               placeholder="e.g., 2023"
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={(e) => handleSearch(search, { year: e.target.value })}
               min="1900"
               max="2030"
               className="filter-input"
@@ -286,12 +297,29 @@ const EnhancedSearchBar = () => {
             <select
               id="genre-filter"
               value={genre}
-              onChange={(e) => setGenre(e.target.value)}
+              onChange={(e) => handleSearch(search, { genre: e.target.value })}
               className="filter-select"
             >
               <option value="">All Genres</option>
               {genresList.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-group" style={{ gridColumn: "span 2" }}>
+            <label htmlFor="language-filter">Language</label>
+            <select
+              id="language-filter"
+              value={language}
+              onChange={(e) => handleSearch(search, { language: e.target.value })}
+              className="filter-select"
+            >
+              <option value="">All Languages</option>
+              {languagesList.map((l) => (
+                <option key={l.iso_639_1} value={l.iso_639_1}>
+                  {l.english_name} {l.name !== l.english_name ? `(${l.name})` : ""}
+                </option>
               ))}
             </select>
           </div>

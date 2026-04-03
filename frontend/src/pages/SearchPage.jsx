@@ -2,85 +2,123 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
-import RecommendationRow from "../components/RecommendationRow"
+import MovieCard from "../components/MovieCard"
 import SkeletonRow from "../components/SkeletonRow"
 import "./SearchPage.css"
 
 const SearchPage = () => {
   const [searchParams] = useSearchParams()
-  const { search, year, genre } = useSearchFilter()
+  const { 
+    setSearch, setYear, setGenre, setLanguage, setFilters,
+    search, year, genre, language, genreMap, languageMap 
+  } = useSearchFilter()
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState("")
   const [totalResults, setTotalResults] = useState(0)
+  const [page, setPage] = useState(1)
 
-  const query = searchParams.get("q") || search
-  const yearFilter = searchParams.get("year") || year
-  const genreFilter = searchParams.get("genre") || genre
+  const query = searchParams.get("q") || ""
+  const yearFilter = searchParams.get("year") || ""
+  const genreFilter = searchParams.get("genre") || ""
+  const languageFilter = searchParams.get("language") || ""
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [query, yearFilter, genreFilter, languageFilter])
+
+  // Sync URL params to context
+  useEffect(() => {
+    setSearch(query)
+    setYear(yearFilter)
+    setGenre(genreFilter)
+    setLanguage(languageFilter)
+    setFilters({ year: yearFilter, genre: genreFilter, language: languageFilter })
+  }, [query, yearFilter, genreFilter, languageFilter])
 
   useEffect(() => {
     const fetchSearchResults = async () => {
-      // Allow fetching if we have a query OR filters (year/genre)
-      if (!query.trim() && !year && !genre) {
+      // Allow fetching if we have a query OR filters (year/genre/language)
+      if (!query.trim() && !yearFilter && !genreFilter && !languageFilter) {
         setResults([])
         setLoading(false)
         return
       }
 
-      setLoading(true)
+      if (page === 1) setLoading(true)
+      else setLoadingMore(true)
+      
       setError("")
 
       try {
         const params = {
           query: query,
-          page: 1
+          page: page
         }
 
-        if (yearFilter) {
-          params.year = yearFilter
-        }
-
-        if (genreFilter) {
-          // Convert genre name to TMDB genre ID if needed
-          params.with_genres = genreFilter
-        }
+        if (yearFilter) params.year = yearFilter
+        if (genreFilter) params.genre = genreFilter
+        if (languageFilter) params.language = languageFilter
 
         const response = await api.get("/movies/search", { params })
         
-        // Map results to include an explanation to match Home page style
         const mappedResults = (response.data.results || []).map(m => ({
           ...m,
           movie_id: m.id,
-          explanation: { reason: `Match for "${query}"`, type: "general" }
+          explanation: { reason: `Match for your search`, type: "general" }
         }))
         
-        setResults(mappedResults)
+        if (page === 1) {
+          setResults(mappedResults)
+        } else {
+          // Prevent duplicates if the effect re-runs
+          setResults(prev => {
+            const existingIds = new Set(prev.map(r => r.movie_id || r.id))
+            const newResults = mappedResults.filter(r => !existingIds.has(r.movie_id || r.id))
+            return [...prev, ...newResults]
+          })
+        }
         setTotalResults(response.data.total_results || 0)
       } catch (error) {
         console.error("Search failed:", error)
         setError("Failed to search movies. Please try again.")
-        setResults([])
       } finally {
         setLoading(false)
+        setLoadingMore(false)
       }
     }
 
     fetchSearchResults()
-  }, [query, yearFilter, genreFilter])
+  }, [query, yearFilter, genreFilter, languageFilter, page])
+
+  const handleLoadMore = () => {
+    setPage(prev => prev + 1)
+  }
 
   const getSearchDescription = () => {
     const parts = []
     if (query) parts.push(`"${query}"`)
     if (yearFilter) parts.push(`from ${yearFilter}`)
-    if (genreFilter) parts.push(`in ${genreFilter}`)
+    
+    if (genreFilter) {
+      const genreName = genreMap[genreFilter] || genreFilter
+      parts.push(`matching genre ${genreName}`)
+    }
+    
+    if (languageFilter) {
+      const langName = languageMap[languageFilter] || languageFilter
+      parts.push(`in ${langName}`)
+    }
     
     if (parts.length === 0) return "All movies"
     if (parts.length === 1) return parts[0]
     
-    return parts.slice(0, -1).join(", ") + " " + parts.slice(-1).join("and ")
+    return parts.slice(0, -1).join(", ") + (parts.length > 1 ? " and " : "") + parts.slice(-1).join("")
   }
 
-  if (loading) {
+  if (loading && page === 1) {
     return (
       <div className="search-page">
         <div className="search-header">
@@ -91,7 +129,7 @@ const SearchPage = () => {
     )
   }
 
-  if (error) {
+  if (error && page === 1) {
     return (
       <div className="search-page">
         <div className="search-header">
@@ -102,7 +140,7 @@ const SearchPage = () => {
     )
   }
 
-  if (!query.trim() && !yearFilter && !genreFilter) {
+  if (!query.trim() && !yearFilter && !genreFilter && !languageFilter) {
     return (
       <div className="search-page">
         <div className="search-header">
@@ -138,17 +176,36 @@ const SearchPage = () => {
       <div className="search-header">
         <h1>Search Results</h1>
         <p className="search-description">
-          {totalResults} results found for {getSearchDescription()}
+          Found {totalResults} movies {getSearchDescription()}
         </p>
       </div>
 
-      <RecommendationRow
-        movies={results}
-        title={`${results.length} results matching "${query}"`}
-        loading={false}
-        emptyMessage="No movies found matching your search criteria."
-        showExplanation={false}
-      />
+      <div className="search-results-section">
+        <h2 className="rec-row-title">
+          Showing {results.length} of {totalResults} results
+        </h2>
+        <div className="search-results-grid">
+          {results.map((movie, index) => (
+            <MovieCard
+              key={`${movie.movie_id || movie.id}-${index}`}
+              movie={movie}
+              showExplanation={false}
+            />
+          ))}
+        </div>
+
+        {results.length < totalResults && (
+          <div className="load-more-container">
+            <button 
+              className="load-more-btn" 
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "Loading..." : "Load More"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
