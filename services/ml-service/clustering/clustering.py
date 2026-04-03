@@ -1,16 +1,3 @@
-"""
-Movie Clustering Module
-
-Implements clustering algorithms for movie grouping:
-- KMeans with automatic optimal K selection
-- DBSCAN for density-based clustering
-- Cluster interpretation and analysis
-
-Optimal K Selection:
-- Elbow Method: Finds the "elbow" point in inertia curve
-- Silhouette Score: Maximizes cluster separation quality
-"""
-
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from collections import Counter
@@ -83,30 +70,13 @@ class ClusteringResult:
 
 
 class MovieClusterer:
-    """
-    Movie clustering engine with multiple algorithm support.
-
-    Features:
-    - Automatic optimal K selection for KMeans
-    - DBSCAN for outlier-aware clustering
-    - Cluster interpretation (dominant features)
-    - Silhouette score evaluation
-    """
-
     def __init__(
         self,
         k_range: Tuple[int, int] = (3, 15),
         random_state: int = 42,
         scale_features: bool = True
     ):
-        """
-        Initialize clusterer.
-
-        Args:
-            k_range: Range of K values to try for optimal selection
-            random_state: Random seed for reproducibility
-            scale_features: Whether to standardize features before clustering
-        """
+        
         self.k_range = k_range
         self.random_state = random_state
         self.scale_features = scale_features
@@ -131,16 +101,6 @@ class MovieClusterer:
         data: PreprocessedData,
         method: str = "silhouette"
     ) -> Tuple[int, Dict]:
-        """
-        Find optimal number of clusters.
-
-        Args:
-            data: Preprocessed movie data
-            method: 'silhouette' or 'elbow'
-
-        Returns:
-            Tuple of (optimal_k, analysis_dict)
-        """
         features = self._prepare_features(data)
         k_min, k_max = self.k_range
 
@@ -222,17 +182,6 @@ class MovieClusterer:
         n_clusters: int = None,
         auto_k: bool = True
     ) -> ClusteringResult:
-        """
-        Cluster movies using KMeans.
-
-        Args:
-            data: Preprocessed movie data
-            n_clusters: Number of clusters (None for auto)
-            auto_k: Whether to automatically find optimal K
-
-        Returns:
-            ClusteringResult with cluster assignments
-        """
         features = self._prepare_features(data)
 
         # Determine K
@@ -276,17 +225,6 @@ class MovieClusterer:
         eps: float = 0.5,
         min_samples: int = 5
     ) -> ClusteringResult:
-        """
-        Cluster movies using DBSCAN.
-
-        Args:
-            data: Preprocessed movie data
-            eps: Maximum distance between samples
-            min_samples: Minimum samples in a neighborhood
-
-        Returns:
-            ClusteringResult with cluster assignments
-        """
         features = self._prepare_features(data)
 
         print(f"[clustering] Running DBSCAN (eps={eps}, min_samples={min_samples})...")
@@ -409,16 +347,6 @@ class MovieClusterer:
         movie_id: int,
         limit: int = 10
     ) -> List[Movie]:
-        """
-        Get movies from the same cluster as the given movie.
-
-        Args:
-            movie_id: TMDB movie ID
-            limit: Maximum number of recommendations
-
-        Returns:
-            List of similar movies in same cluster
-        """
         if self._current_result is None:
             raise ValueError("No clustering result available. Run clustering first.")
 
@@ -451,17 +379,6 @@ def auto_cluster(
     algorithm: str = "kmeans",
     **kwargs
 ) -> ClusteringResult:
-    """
-    Convenience function for automatic clustering.
-
-    Args:
-        data: Preprocessed movie data
-        algorithm: 'kmeans' or 'dbscan'
-        **kwargs: Additional parameters for the algorithm
-
-    Returns:
-        ClusteringResult
-    """
     clusterer = MovieClusterer()
 
     if algorithm == "kmeans":

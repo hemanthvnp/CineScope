@@ -4,11 +4,7 @@ const axios = require("axios")
 const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"
 
-/**
- * POST /api/ratings
- * Submit or update a movie rating.
- * Also syncs the rating to the recommendation service's watchlist.
- */
+
 const submitRating = async (req, res) => {
   try {
     const userId = req.auth.userId
@@ -29,7 +25,6 @@ const submitRating = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     )
 
-    // Sync to recommendation service's watchlist (best-effort, don't fail if it errors)
     try {
       await axios.post(
         `${RECOMMENDATION_SERVICE_URL}/api/recommendations/${userId}/watchlist`,
@@ -40,11 +35,9 @@ const submitRating = async (req, res) => {
       console.warn("Failed to sync rating to recommendation service:", syncError.message)
     }
 
-    // Trigger ML service refresh (asynchronous)
     try {
       axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch(() => {})
     } catch (refreshError) {
-      // Ignore refresh errors, they shouldn't block the response
     }
 
     return res.status(200).json({
@@ -53,7 +46,6 @@ const submitRating = async (req, res) => {
     })
   } catch (error) {
     if (error.code === 11000) {
-      // Duplicate key — shouldn't happen with upsert, but handle gracefully
       return res.status(409).json({ message: "Rating already exists." })
     }
     console.error("Failed to submit rating:", error.message)
@@ -61,10 +53,7 @@ const submitRating = async (req, res) => {
   }
 }
 
-/**
- * GET /api/ratings/me
- * Get all ratings by the logged-in user.
- */
+
 const getUserRatings = async (req, res) => {
   try {
     const userId = req.auth.userId
@@ -77,10 +66,7 @@ const getUserRatings = async (req, res) => {
   }
 }
 
-/**
- * GET /api/ratings/movie/:movieId
- * Get aggregated rating stats for a specific movie.
- */
+
 const getMovieRatings = async (req, res) => {
   try {
     const movieId = parseInt(req.params.movieId, 10)
@@ -95,7 +81,6 @@ const getMovieRatings = async (req, res) => {
       ? ratings.reduce((sum, r) => sum + r.rating, 0) / count
       : 0
 
-    // Check if the current user has rated this movie
     let userRating = null
     if (req.auth?.userId) {
       const myRating = ratings.find(r => r.userId.toString() === req.auth.userId)

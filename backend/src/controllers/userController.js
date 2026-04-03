@@ -11,7 +11,6 @@ const axios = require("axios")
 
 const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
 
-// Mapping of frontend genre names to TMDB genre IDs
 const GENRE_NAME_TO_ID = {
 	"action": 28,
 	"adventure": 12,
@@ -33,7 +32,7 @@ const GENRE_NAME_TO_ID = {
 	"thriller": 53,
 	"war": 10752,
 	"western": 37,
-	"anime": 16 // Mapping anime to animation for recommendation service
+	"anime": 16
 }
 
 const hashOtp = (otpCode) => {
@@ -186,7 +185,6 @@ const verifyRegistrationOtp = async (req, res) => {
 
 		await PendingRegistration.deleteOne({ _id: pending._id })
 
-		// Initialize user preferences in recommendation service
 		if (user.favoriteGenre) {
 			const genreId = GENRE_NAME_TO_ID[user.favoriteGenre.toLowerCase()]
 			if (genreId) {
@@ -194,7 +192,7 @@ const verifyRegistrationOtp = async (req, res) => {
 					await axios.put(
 						`${RECOMMENDATION_SERVICE_URL}/api/recommendations/${user._id}/preferences`,
 						{
-							preferences: [{ genre_id: genreId, score: 10 }] // Max score for favorite genre
+							preferences: [{ genre_id: genreId, score: 10 }]
 						},
 						{ timeout: 5000 }
 					)
@@ -266,7 +264,6 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
 	try {
-		// Whitelist of updatable fields
 		const allowed = ["screenName", "signatureLine", "favoriteGenre", "favoriteEra", "preferredLanguage"]
 		const updates = {}
 
