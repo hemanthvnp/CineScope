@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 
 const EnhancedSearchBar = () => {
   const navigate = useNavigate()
-  const { search, setSearch, year, setYear, genre, setGenre, setFilters } = useSearchFilter()
+  const location = useLocation()
+  const { search, setSearch, year, setYear, genre, setGenre, setFilters, clearSearch } = useSearchFilter()
   const [suggestions, setSuggestions] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -13,6 +14,13 @@ const EnhancedSearchBar = () => {
   const [showFilters, setShowFilters] = useState(false)
   const searchRef = useRef(null)
   const inputRef = useRef(null)
+
+  // Clear search bar when navigating to a non-search page
+  useEffect(() => {
+    if (location.pathname !== "/search") {
+      clearSearch()
+    }
+  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load recent searches from localStorage
   useEffect(() => {
@@ -79,8 +87,8 @@ const EnhancedSearchBar = () => {
   }
 
   const handleSuggestionClick = (movie) => {
-    setSearch(movie.title)
-    handleSearch(movie.title)
+    navigate(`/movie/${movie.id}`)
+    setShowSuggestions(false)
   }
 
   const handleRecentSearchClick = (term) => {

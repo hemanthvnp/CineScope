@@ -9,7 +9,7 @@ import SkeletonRow from "./SkeletonRow"
  * Supports left/right scroll arrows and shows loading skeletons.
  *
  * Props:
- *   title - Section heading (e.g., "🎯 Recommended For You")
+ *   title - Section heading (e.g., "✨ Recommended For You")
  *   movies - Array of movie objects with explanation data
  *   loading - Whether the data is still loading
  *   emptyMessage - Message to show when no movies are available
