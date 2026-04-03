@@ -1,12 +1,5 @@
 const mongoose = require("mongoose")
 
-/**
- * Rating Schema
- *
- * Stores user movie ratings. Used by both the backend and the ML service.
- * When a rating is submitted, it is also synced to the recommendation
- * service's UserWatchlist collection for compatibility.
- */
 const ratingSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,

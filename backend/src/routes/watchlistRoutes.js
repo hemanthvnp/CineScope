@@ -2,7 +2,6 @@ const express = require("express")
 const router = express.Router()
 const Watchlist = require("../models/Watchlist")
 
-// ADD movie to watchlist
 router.post("/", async (req, res) => {
   try {
     const { movieId, title, year, poster } = req.body
@@ -26,7 +25,6 @@ router.post("/", async (req, res) => {
   }
 })
 
-// GET all watchlist movies
 router.get("/", async (req, res) => {
   try {
     const movies = await Watchlist.find().sort({ createdAt: -1 })

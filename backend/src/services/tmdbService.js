@@ -2,7 +2,6 @@ const axios = require("axios")
 
 const BASE_URL = "https://api.themoviedb.org/3"
 
-// Create axios instance with timeout and retry config
 const tmdbApi = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
@@ -11,7 +10,6 @@ const tmdbApi = axios.create({
   }
 })
 
-// ── Simple in-memory cache with TTL ──────────────────────────────────
 const _cache = new Map()
 const CACHE_TTL = 10 * 60 * 1000 // 10 minutes
 
@@ -29,7 +27,6 @@ const cacheSet = (key, data) => {
   _cache.set(key, { data, ts: Date.now() })
 }
 
-// ── Retry wrapper ────────────────────────────────────────────────────
 const fetchWithRetry = async (url, params, retries = 3) => {
   for (let i = 0; i < retries; i++) {
     try {
@@ -43,7 +40,6 @@ const fetchWithRetry = async (url, params, retries = 3) => {
   }
 }
 
-// ── Cached fetch helper ──────────────────────────────────────────────
 const cachedFetch = async (cacheKey, url, params) => {
   const cached = cacheGet(cacheKey)
   if (cached) return cached
@@ -57,7 +53,6 @@ const cachedFetch = async (cacheKey, url, params) => {
   return data
 }
 
-// ── Public API ───────────────────────────────────────────────────────
 
 const getTrendingMovies = async () => {
   const data = await cachedFetch("trending", "/trending/movie/week", {})
@@ -90,7 +85,6 @@ const getMovieDetails = async (movieId) => {
 }
 
 const searchMovies = async (query, page = 1) => {
-  // Don't cache search results as they change frequently
   const response = await fetchWithRetry("/search/movie", {
     api_key: process.env.TMDB_API_KEY,
     query,
@@ -210,25 +204,17 @@ const getGenreList = async () => {
  */
 const filterMovies = async (filters = {}, page = 1) => {
   const { genreId, language, era } = filters
-
-  // Build TMDB discover params
   const params = {
     sort_by: "popularity.desc",
     page,
     "vote_count.gte": 50
   }
-
-  // Add genre filter
   if (genreId) {
     params.with_genres = genreId
   }
-
-  // Add language filter
   if (language) {
     params.with_original_language = language
   }
-
-  // Add era filter (date range)
   if (era) {
     const eraRanges = {
       "Classic": { start: "1900-01-01", end: "1979-12-31" },

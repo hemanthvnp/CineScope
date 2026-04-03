@@ -9,9 +9,10 @@ const watchlistRoutes = require("./routes/watchlistRoutes")
 
 const app = express()
 
-// Microservice URLs
-const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"
+// Microservice URLs - Normalize by removing trailing slashes
+const normalizeUrl = (url) => url ? url.replace(/\/+$/, "") : ""
+const RECOMMENDATION_SERVICE_URL = normalizeUrl(process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001")
+const ML_SERVICE_URL = normalizeUrl(process.env.ML_SERVICE_URL || "http://localhost:8000")
 
 app.use(cors())
 app.use(express.json())

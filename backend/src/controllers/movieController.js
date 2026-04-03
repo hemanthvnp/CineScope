@@ -135,10 +135,7 @@ const getGenres = async (req, res) => {
   }
 }
 
-/**
- * Filter movies by intersection of genre, language, and era
- * GET /api/movies/filter?genre=28&language=en&era=Modern
- */
+
 const filterMovies = async (req, res) => {
   try {
     const { genre, language, era, page = 1 } = req.query
@@ -161,10 +158,7 @@ const filterMovies = async (req, res) => {
   }
 }
 
-/**
- * Get available filter options for dropdowns
- * GET /api/movies/filter/options
- */
+
 const getFilterOptions = async (req, res) => {
   try {
     const options = await tmdbService.getFilterOptions()
