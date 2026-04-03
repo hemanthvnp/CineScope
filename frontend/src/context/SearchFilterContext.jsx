@@ -15,13 +15,13 @@ export function SearchFilterProvider({ children }) {
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [genresRes, langsRes] = await Promise.all([
-          api.get("/movies/genres"),
-          api.get("/movies/languages")
-        ])
-        setGenresList(genresRes.data.genres || [])
-        const sortedLangs = (langsRes.data.languages || []).sort((a, b) => 
-          (a.english_name || "").localeCompare(b.english_name || "")
+        const response = await api.get("/movies/filter/options")
+        const { genres, languages } = response.data
+        
+        setGenresList(genres || [])
+        
+        const sortedLangs = (languages || []).sort((a, b) => 
+          (a.name || "").localeCompare(b.name || "")
         )
         setLanguagesList(sortedLangs)
       } catch (error) {
@@ -33,7 +33,7 @@ export function SearchFilterProvider({ children }) {
 
   const languageMap = useMemo(() => {
     return languagesList.reduce((acc, lang) => {
-      acc[lang.iso_639_1] = lang.english_name
+      acc[lang.code] = lang.name
       return acc
     }, {})
   }, [languagesList])

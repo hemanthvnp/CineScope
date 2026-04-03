@@ -321,7 +321,6 @@ module.exports = {
   getMoviesByGenre,
   getMoviesByLanguage,
   getTopRatedByLanguage,
-  getPopularMoviesBulk,
   getGenreList,
   filterMovies,
   getFilterOptions

@@ -160,24 +160,6 @@ function Home() {
     fetchLanguageMovies()
   }, [profile?.preferredLanguage, languageMap])
 
-  /* ------------------ hybrid recommendations (Personalized) ------------------ */
-  useEffect(() => {
-    if (!profile?.id) return
-    const fetchRecommendations = async () => {
-      setLoadingHybrid(true)
-      try {
-        const data = await getHybridRecommendations(profile.id, 40)
-        const recs = data.recommendations || []
-        setHybridRecs(recs.slice(0, 20))
-        setBecauseYouLiked(recs.filter(r => r.explanation?.type === "content_similarity").slice(0, 15))
-        setGenreRecs(recs.filter(r => r.explanation?.type === "genre_match").slice(0, 15))
-      } catch {
-        setHybridRecs([]); setBecauseYouLiked([]); setGenreRecs([])
-      } finally { setLoadingHybrid(false) }
-    }
-    fetchRecommendations()
-  }, [profile?.id])
-
   const nickname = (profile?.screenName || profile?.name || "Cinephile").replace(/^@/, "").replace(/\s+/g, "")
   const signatureLine = profile?.signatureLine?.trim() || "Start by rating a film you love and we'll shape your next perfect watch."
 
@@ -190,29 +172,25 @@ function Home() {
       </section>
       <div className="reveal-on-scroll"><HeroBanner /></div>
 
-      {hybridRecs.length > 0 && (
+      {/* ✨ Recommended For You */}
+      {(hybridRecs.length > 0 || loadingHybrid) && (
         <div className="reveal-on-scroll">
-          <RecommendationRow title="✨ Recommended For You" movies={hybridRecs} loading={loadingHybrid} showExplanation={true} />
+          <RecommendationRow
+            title="✨ Recommended For You"
+            movies={hybridRecs}
+            loading={loadingHybrid}
+            emptyMessage="Complete your profile to get better matches!"
+            showExplanation={true}
+          />
         </div>
       )}
 
-      {/* ✨ Recommended For You */}
-      <div className="reveal-on-scroll">
-        <RecommendationRow
-          title="✨ Recommended For You"
-          movies={applyFilters(hybridRecs)}
-          loading={loadingHybrid}
-          emptyMessage="Complete your profile to get better matches!"
-          showExplanation={true}
-        />
-      </div>
-
       {/* ❤️ Because You Liked... */}
-      {becauseYouLiked.length > 0 && (
+      {(becauseYouLiked.length > 0 || loadingHybrid) && (
         <div className="reveal-on-scroll">
           <RecommendationRow
             title="❤️ Because You Liked..."
-            movies={applyFilters(becauseYouLiked)}
+            movies={becauseYouLiked}
             loading={loadingHybrid}
             showExplanation={true}
           />
@@ -220,15 +198,17 @@ function Home() {
       )}
 
       {/* 🎬 Now Playing - Pure TMDB */}
-      <div className="reveal-on-scroll">
-        <RecommendationRow
-          title="🎬 In Theatres Now"
-          movies={applyFilters(nowPlaying)}
-          loading={loadingNowPlaying}
-          emptyMessage="Could not load now playing movies."
-          showExplanation={false}
-        />
-      </div>
+      {(nowPlaying.length > 0 || loadingNowPlaying) && (
+        <div className="reveal-on-scroll">
+          <RecommendationRow
+            title="🎬 In Theatres Now"
+            movies={nowPlaying}
+            loading={loadingNowPlaying}
+            emptyMessage="Could not load now playing movies."
+            showExplanation={false}
+          />
+        </div>
+      )}
 
       {(languageMovies.length > 0 || loadingLanguage) && profile?.preferredLanguage && (
         <div className="reveal-on-scroll">
