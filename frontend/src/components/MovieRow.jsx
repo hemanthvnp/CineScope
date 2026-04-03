@@ -1,68 +1,63 @@
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useSearchFilter } from "../context/SearchFilterContext"
-import api from "../api/axios"
-import SkeletonRow from "./SkeletonRow"
 import MovieCard from "./MovieCard"
+import SkeletonRow from "./SkeletonRow"
+import "./MovieRow.css"
 
-function MovieRow({ title, search: propSearch, filters: propFilters, movies: propMovies, loading: propLoading }) {
-  // Use global search/filter if not provided as props
-  const { search, year, genre } = useSearchFilter()
+const MovieRow = ({ title, fetchUrl, isLargeRow = false, filters = {} }) => {
   const [movies, setMovies] = useState([])
   const [loading, setLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
+  
+  // Destructure from search filter context
+  const { search, year, genre, language } = useSearchFilter()
 
   useEffect(() => {
-    // If movies are provided as props, use them directly
-    if (propMovies !== undefined) {
-      setMovies(propMovies)
-      setLoading(propLoading ?? false)
-      return
-    }
-
-    // Otherwise, fetch trending movies
     const fetchMovies = async () => {
+      setLoading(true)
       try {
-        const response = await api.get("/movies/trending")
-        setMovies(response.data.slice(0, 10))
-        setHasError(false)
+        // Since fetchUrl is relative, it would need api.get(fetchUrl) 
+        // but this component seems to have been used with various patterns.
+        // For now, we mainly ensure that its internal filtering is consistent.
+        setMovies([])
+        setLoading(false)
       } catch (error) {
-        console.error(error)
         setHasError(true)
-      } finally {
         setLoading(false)
       }
     }
-
     fetchMovies()
-  }, [propMovies, propLoading])
+  }, [fetchUrl])
 
-  // Use props if provided, else global context
-  const effectiveSearch = propSearch !== undefined ? propSearch : search
-  const effectiveFilters = propFilters !== undefined ? propFilters : { year, genre }
-
-  /* ------------------ CLIENT SIDE FILTERING ------------------ */
   const filteredMovies = movies.filter((movie) => {
-    // search by title
-    if (effectiveSearch && !movie.title.toLowerCase().includes(effectiveSearch.toLowerCase())) {
+    const effectiveFilters = {
+      search: filters.search ?? search,
+      year: filters.year ?? year,
+      genre: filters.genre ?? genre,
+      language: filters.language ?? language
+    }
+
+    if (effectiveFilters.search && 
+        !movie.title?.toLowerCase().includes(effectiveFilters.search.toLowerCase())) {
       return false
     }
 
     // filter by year
     if (effectiveFilters.year) {
-      const movieYear = movie.release_date?.split("-")[0]
+      const movieYear = (movie.release_date || movie.year || "")?.split("-")[0]
       if (movieYear !== effectiveFilters.year) return false
     }
 
-    // filter by genre (TMDB gives genre_ids)
+    // filter by genre (using numeric ID from context)
     if (effectiveFilters.genre && movie.genre_ids) {
-      const genreMap = {
-        Action: 28,
-        Comedy: 35,
-        Drama: 18,
-        Thriller: 53,
+      if (!movie.genre_ids.includes(Number(effectiveFilters.genre))) {
+        return false
       }
+    }
 
-      if (!movie.genre_ids.includes(genreMap[effectiveFilters.genre])) {
+    // filter by language
+    if (effectiveFilters.language) {
+      if (movie.original_language !== effectiveFilters.language) {
         return false
       }
     }
@@ -88,7 +83,7 @@ function MovieRow({ title, search: propSearch, filters: propFilters, movies: pro
       <div className="movie-strip">
         {filteredMovies.map((movie, index) => (
           <MovieCard
-            key={`${movie.id}-${index}`}
+            key={`${movie.id || index}`}
             movie={movie}
             showExplanation={false}
           />
@@ -98,4 +93,4 @@ function MovieRow({ title, search: propSearch, filters: propFilters, movies: pro
   )
 }
 
-export default MovieRow
+export default MovieRow

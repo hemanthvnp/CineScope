@@ -51,14 +51,33 @@ const getTopRated = async (req, res) => {
 
 const searchMovies = async (req, res) => {
   try {
-    const { query } = req.query
-    if (!query) {
-      return res.status(400).json({ message: "Search query is required" })
-    }
+    const { 
+      query, year, genre, language, 
+      sort_by, release_date_gte, release_date_lte 
+    } = req.query
     const page = parseInt(req.query.page) || 1
-    const data = await tmdbService.searchMovies(query, page)
-    res.json(data)
+
+    if (query) {
+      const data = await tmdbService.searchMovies(query, page)
+      return res.json(data)
+    }
+
+    if (year || genre || language || release_date_gte || release_date_lte) {
+      const data = await tmdbService.discoverMovies({ 
+        page, 
+        year, 
+        with_genres: genre,
+        language,
+        sort_by,
+        release_date_gte,
+        release_date_lte
+      })
+      return res.json(data)
+    }
+
+    res.status(400).json({ message: "Search query or filters are required" })
   } catch (error) {
+    console.error("Search error:", error)
     res.status(500).json({ message: "Failed to search movies" })
   }
 }
@@ -87,13 +106,13 @@ const getMovieDetails = async (req, res) => {
 const getMoviesByLanguage = async (req, res) => {
   try {
     const { language } = req.params
-    const { page = 1, sort = "popular" } = req.query
+    const { page = 1, sort = "popular", genre } = req.query
 
     let movies
     if (sort === "top_rated") {
       movies = await tmdbService.getTopRatedByLanguage(language, 20)
     } else {
-      movies = await tmdbService.getMoviesByLanguage(language, parseInt(page))
+      movies = await tmdbService.getMoviesByLanguage(language, parseInt(page), genre)
     }
 
     res.json({

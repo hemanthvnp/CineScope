@@ -99,12 +99,37 @@ const searchMovies = async (query, page = 1) => {
   return response.data
 }
 
+const discoverMovies = async (params) => {
+  const { 
+    page = 1, 
+    year, 
+    with_genres, 
+    language, 
+    sort_by = "popularity.desc",
+    release_date_gte,
+    release_date_lte
+  } = params
+
+  const searchParams = {
+    page,
+    sort_by
+  }
+
+  if (year) searchParams.primary_release_year = year
+  if (with_genres) searchParams.with_genres = with_genres
+  if (language) searchParams.with_original_language = language
+  if (release_date_gte) searchParams["release_date.gte"] = release_date_gte
+  if (release_date_lte) searchParams["release_date.lte"] = release_date_lte
+
+  const data = await cachedFetch(`discover_${JSON.stringify(searchParams)}`, "/discover/movie", searchParams)
+  return data
+}
+
 const getMoviesByGenre = async (genreId, page = 1) => {
   const data = await cachedFetch(`genre_${genreId}_${page}`, "/discover/movie", {
     with_genres: genreId,
     sort_by: "popularity.desc",
-    page,
-    "vote_count.gte": 50
+    page
   })
   return data
 }
@@ -112,13 +137,19 @@ const getMoviesByGenre = async (genreId, page = 1) => {
 /**
  * Get popular movies by language from TMDB
  */
-const getMoviesByLanguage = async (language, page = 1) => {
-  const data = await cachedFetch(`lang_${language}_${page}`, "/discover/movie", {
+const getMoviesByLanguage = async (language, page = 1, with_genres = null) => {
+  const searchParams = {
     with_original_language: language,
     sort_by: "popularity.desc",
-    page,
-    "vote_count.gte": 50
-  })
+    page
+  }
+  
+  if (with_genres) {
+    searchParams.with_genres = with_genres
+  }
+
+  const cacheKey = `lang_${language}_${page}_${with_genres || "any"}`
+  const data = await cachedFetch(cacheKey, "/discover/movie", searchParams)
 
   return data.results.map(movie => ({
     movie_id: movie.id,
@@ -161,27 +192,8 @@ const getTopRatedByLanguage = async (language, limit = 20) => {
   }))
 }
 
-/**
- * Fetch multiple pages of popular movies (for recommendation engine warm-up)
- */
-const getPopularMoviesBulk = async (pages = 5) => {
-  const allMovies = []
-  for (let page = 1; page <= pages; page++) {
-    try {
-      const data = await cachedFetch(`popular_${page}`, "/movie/popular", { page })
-      allMovies.push(...data.results)
-    } catch (error) {
-      console.error(`Failed to fetch popular movies page ${page}:`, error.message)
-    }
-  }
-  return allMovies
-}
-
-/**
- * Get TMDB genre list
- */
 const getGenreList = async () => {
-  const data = await cachedFetch("genre_list", "/genre/movie/list", {})
+  const data = await cachedFetch("genre_list", "/genre/movie/list", { language: "en-US" })
   return data.genres
 }
 
@@ -305,6 +317,7 @@ module.exports = {
   getTopRatedMovies,
   getMovieDetails,
   searchMovies,
+  discoverMovies,
   getMoviesByGenre,
   getMoviesByLanguage,
   getTopRatedByLanguage,

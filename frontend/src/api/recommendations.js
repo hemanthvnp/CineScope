@@ -158,9 +158,9 @@ export const removeMovieFromDisliked = async (movieId, userIdArg = null) => {
  * @param {string} sort - Sort order: 'popular' or 'top_rated'
  * @returns {Promise<object>} Movies in the specified language
  */
-export const getMoviesByLanguage = async (language, sort = "popular") => {
+export const getMoviesByLanguage = async (language, sort = "popular", genre = null) => {
   const response = await api.get(`/movies/language/${language}`, {
-    params: { sort }
+    params: { sort, genre }
   })
   return response.data
 }
