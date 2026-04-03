@@ -197,9 +197,116 @@ const getGenreList = async () => {
   return data.genres
 }
 
-const getLanguagesList = async () => {
-  const data = await cachedFetch("languages_list", "/configuration/languages", {})
-  return data
+/**
+ * Filter movies by INTERSECTION of genre, language, and era
+ * All specified filters must match (AND logic)
+ *
+ * @param {Object} filters - Filter criteria
+ * @param {number} filters.genreId - Genre ID (optional)
+ * @param {string} filters.language - Language code like 'en', 'ko' (optional)
+ * @param {string} filters.era - Era bucket: 'Classic', 'Old', 'Modern', 'Recent' (optional)
+ * @param {number} page - Page number for pagination
+ * @returns {Object} - Filtered movies with metadata
+ */
+const filterMovies = async (filters = {}, page = 1) => {
+  const { genreId, language, era } = filters
+
+  // Build TMDB discover params
+  const params = {
+    sort_by: "popularity.desc",
+    page,
+    "vote_count.gte": 50
+  }
+
+  // Add genre filter
+  if (genreId) {
+    params.with_genres = genreId
+  }
+
+  // Add language filter
+  if (language) {
+    params.with_original_language = language
+  }
+
+  // Add era filter (date range)
+  if (era) {
+    const eraRanges = {
+      "Classic": { start: "1900-01-01", end: "1979-12-31" },
+      "Old": { start: "1980-01-01", end: "1999-12-31" },
+      "Modern": { start: "2000-01-01", end: "2015-12-31" },
+      "Recent": { start: "2016-01-01", end: "2099-12-31" }
+    }
+
+    const range = eraRanges[era]
+    if (range) {
+      params["primary_release_date.gte"] = range.start
+      params["primary_release_date.lte"] = range.end
+    }
+  }
+
+  // Create cache key from filters
+  const cacheKey = `filter_${genreId || 'any'}_${language || 'any'}_${era || 'any'}_${page}`
+
+  const data = await cachedFetch(cacheKey, "/discover/movie", params)
+
+  return {
+    results: data.results.map(movie => ({
+      movie_id: movie.id,
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      poster_path: movie.poster_path,
+      vote_average: movie.vote_average,
+      vote_count: movie.vote_count,
+      popularity: movie.popularity,
+      release_date: movie.release_date,
+      language: movie.original_language,
+      genre_ids: movie.genre_ids
+    })),
+    page: data.page,
+    total_pages: data.total_pages,
+    total_results: data.total_results,
+    filters_applied: {
+      genre_id: genreId || null,
+      language: language || null,
+      era: era || null
+    }
+  }
+}
+
+/**
+ * Get available filter options (genres, languages, eras)
+ */
+const getFilterOptions = async () => {
+  const genres = await getGenreList()
+
+  return {
+    genres: genres,
+    languages: [
+      { code: "en", name: "English" },
+      { code: "ko", name: "Korean" },
+      { code: "ja", name: "Japanese" },
+      { code: "hi", name: "Hindi" },
+      { code: "es", name: "Spanish" },
+      { code: "fr", name: "French" },
+      { code: "de", name: "German" },
+      { code: "zh", name: "Chinese" },
+      { code: "it", name: "Italian" },
+      { code: "pt", name: "Portuguese" },
+      { code: "ru", name: "Russian" },
+      { code: "ta", name: "Tamil" },
+      { code: "te", name: "Telugu" },
+      { code: "ml", name: "Malayalam" },
+      { code: "th", name: "Thai" },
+      { code: "tr", name: "Turkish" }
+    ],
+    eras: [
+      { id: "Classic", label: "Classic (before 1980)" },
+      { id: "Old", label: "Old (1980-1999)" },
+      { id: "Modern", label: "Modern (2000-2015)" },
+      { id: "Recent", label: "Recent (2016+)" }
+    ]
+  }
 }
 
 module.exports = {
@@ -214,6 +321,8 @@ module.exports = {
   getMoviesByGenre,
   getMoviesByLanguage,
   getTopRatedByLanguage,
+  getPopularMoviesBulk,
   getGenreList,
-  getLanguagesList
+  filterMovies,
+  getFilterOptions
 }
