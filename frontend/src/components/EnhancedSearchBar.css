@@ -330,41 +330,53 @@
 .filter-actions {
   grid-column: 1 / -1;
   display: flex;
-  gap: 12px;
-  margin-top: 8px;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .clear-filters-btn,
 .apply-filters-btn {
   flex: 1;
-  padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .clear-filters-btn {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
   color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .clear-filters-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 .apply-filters-btn {
-  background: rgba(255, 59, 48, 0.8);
+  background: linear-gradient(135deg, #ff3b30 0%, #d42a22 100%);
   color: #fff;
-  border-color: rgba(255, 59, 48, 0.6);
+  border: none;
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
 }
 
 .apply-filters-btn:hover {
-  background: rgba(255, 59, 48, 0.9);
-  border-color: rgba(255, 59, 48, 0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 59, 48, 0.4);
+  filter: brightness(1.1);
+}
+
+.apply-filters-btn:active {
+  transform: translateY(0);
 }
 
 /* Responsive Design */

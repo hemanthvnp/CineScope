@@ -99,6 +99,22 @@ const searchMovies = async (query, page = 1) => {
   return response.data
 }
 
+const discoverMovies = async (params) => {
+  const { page = 1, year, with_genres } = params
+  
+  const searchParams = {
+    page,
+    sort_by: "popularity.desc",
+    "vote_count.gte": 50
+  }
+  
+  if (year) searchParams.primary_release_year = year
+  if (with_genres) searchParams.with_genres = with_genres
+  
+  const data = await cachedFetch(`discover_${JSON.stringify(searchParams)}`, "/discover/movie", searchParams)
+  return data
+}
+
 const getMoviesByGenre = async (genreId, page = 1) => {
   const data = await cachedFetch(`genre_${genreId}_${page}`, "/discover/movie", {
     with_genres: genreId,
@@ -193,6 +209,7 @@ module.exports = {
   getTopRatedMovies,
   getMovieDetails,
   searchMovies,
+  discoverMovies,
   getMoviesByGenre,
   getMoviesByLanguage,
   getTopRatedByLanguage,

@@ -20,7 +20,8 @@ const SearchPage = () => {
 
   useEffect(() => {
     const fetchSearchResults = async () => {
-      if (!query.trim()) {
+      // Allow fetching if we have a query OR filters (year/genre)
+      if (!query.trim() && !year && !genre) {
         setResults([])
         setLoading(false)
         return
@@ -101,7 +102,7 @@ const SearchPage = () => {
     )
   }
 
-  if (!query.trim()) {
+  if (!query.trim() && !yearFilter && !genreFilter) {
     return (
       <div className="search-page">
         <div className="search-header">

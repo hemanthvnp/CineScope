@@ -51,14 +51,26 @@ const getTopRated = async (req, res) => {
 
 const searchMovies = async (req, res) => {
   try {
-    const { query } = req.query
-    if (!query) {
-      return res.status(400).json({ message: "Search query is required" })
-    }
+    const { query, year, genre } = req.query
     const page = parseInt(req.query.page) || 1
-    const data = await tmdbService.searchMovies(query, page)
-    res.json(data)
+
+    if (query) {
+      const data = await tmdbService.searchMovies(query, page)
+      return res.json(data)
+    }
+
+    if (year || genre) {
+      const data = await tmdbService.discoverMovies({ 
+        page, 
+        year, 
+        with_genres: genre 
+      })
+      return res.json(data)
+    }
+
+    res.status(400).json({ message: "Search query or filters are required" })
   } catch (error) {
+    console.error("Search error:", error)
     res.status(500).json({ message: "Failed to search movies" })
   }
 }

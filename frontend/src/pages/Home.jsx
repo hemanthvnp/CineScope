@@ -218,10 +218,9 @@ function Home() {
         if (movieYear !== year) return false
       }
 
-      // filter by genre
+      // filter by genre (using numeric ID from context)
       if (genre && movie.genre_ids) {
-        const genreMap = { Action: 28, Comedy: 35, Drama: 18, Thriller: 53 }
-        if (!movie.genre_ids.includes(genreMap[genre])) {
+        if (!movie.genre_ids.includes(Number(genre))) {
           return false
         }
       }

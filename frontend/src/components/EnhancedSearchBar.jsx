@@ -12,8 +12,22 @@ const EnhancedSearchBar = () => {
   const [loading, setLoading] = useState(false)
   const [recentSearches, setRecentSearches] = useState([])
   const [showFilters, setShowFilters] = useState(false)
+  const [genresList, setGenresList] = useState([])
   const searchRef = useRef(null)
   const inputRef = useRef(null)
+
+  // Fetch genres list
+  useEffect(() => {
+    const fetchGenres = async () => {
+      try {
+        const response = await api.get("/movies/genres")
+        setGenresList(response.data.genres || [])
+      } catch (error) {
+        console.error("Failed to fetch genres:", error)
+      }
+    }
+    fetchGenres()
+  }, [])
 
   // Clear search bar when navigating to a non-search page
   useEffect(() => {
@@ -72,7 +86,8 @@ const EnhancedSearchBar = () => {
   }, [])
 
   const handleSearch = (searchTerm = search) => {
-    if (!searchTerm.trim()) return
+    // allow search if we have a query OR if filters are active
+    if (!searchTerm.trim() && !year && !genre) return
 
     // Add to recent searches
     const newRecent = [searchTerm, ...recentSearches.filter(s => s !== searchTerm)].slice(0, 5)
@@ -83,6 +98,7 @@ const EnhancedSearchBar = () => {
     setFilters({ year, genre })
     navigate(`/search?q=${encodeURIComponent(searchTerm)}&year=${year}&genre=${genre}`)
     setShowSuggestions(false)
+    setShowFilters(false)
     inputRef.current?.blur()
   }
 
@@ -274,24 +290,9 @@ const EnhancedSearchBar = () => {
               className="filter-select"
             >
               <option value="">All Genres</option>
-              <option value="Action">Action</option>
-              <option value="Adventure">Adventure</option>
-              <option value="Animation">Animation</option>
-              <option value="Comedy">Comedy</option>
-              <option value="Crime">Crime</option>
-              <option value="Documentary">Documentary</option>
-              <option value="Drama">Drama</option>
-              <option value="Family">Family</option>
-              <option value="Fantasy">Fantasy</option>
-              <option value="Horror">Horror</option>
-              <option value="Music">Music</option>
-              <option value="Mystery">Mystery</option>
-              <option value="Romance">Romance</option>
-              <option value="Science Fiction">Science Fiction</option>
-              <option value="TV Movie">TV Movie</option>
-              <option value="Thriller">Thriller</option>
-              <option value="War">War</option>
-              <option value="Western">Western</option>
+              {genresList.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
             </select>
           </div>
 
