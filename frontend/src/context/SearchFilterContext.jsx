@@ -12,6 +12,12 @@ export function SearchFilterProvider({ children }) {
     setGenre(genre)
   }
 
+  const clearSearch = () => {
+    setSearch("")
+    setYear("")
+    setGenre("")
+  }
+
   return (
     <SearchFilterContext.Provider
       value={{
@@ -22,6 +28,7 @@ export function SearchFilterProvider({ children }) {
         genre,
         setGenre,
         setFilters,
+        clearSearch,
       }}
     >
       {children}

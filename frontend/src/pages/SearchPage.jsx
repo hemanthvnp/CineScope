@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
-import MovieRow from "../components/MovieRow"
+import RecommendationRow from "../components/RecommendationRow"
 import SkeletonRow from "../components/SkeletonRow"
 import "./SearchPage.css"
 
@@ -46,7 +46,14 @@ const SearchPage = () => {
 
         const response = await api.get("/movies/search", { params })
         
-        setResults(response.data.results || [])
+        // Map results to include an explanation to match Home page style
+        const mappedResults = (response.data.results || []).map(m => ({
+          ...m,
+          movie_id: m.id,
+          explanation: { reason: `Match for "${query}"`, type: "general" }
+        }))
+        
+        setResults(mappedResults)
         setTotalResults(response.data.total_results || 0)
       } catch (error) {
         console.error("Search failed:", error)
@@ -133,12 +140,13 @@ const SearchPage = () => {
           {totalResults} results found for {getSearchDescription()}
         </p>
       </div>
-      
-      <MovieRow 
-        movies={results} 
-        title={`${results.length} Results`}
+
+      <RecommendationRow
+        movies={results}
+        title={`${results.length} results matching "${query}"`}
         loading={false}
         emptyMessage="No movies found matching your search criteria."
+        showExplanation={false}
       />
     </div>
   )

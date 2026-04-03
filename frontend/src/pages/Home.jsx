@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import HeroBanner from "../components/HeroBanner"
 import RecommendationRow from "../components/RecommendationRow"
-import MovieRow from "../components/MovieRow"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 import {
@@ -299,10 +298,10 @@ function Home() {
         </div>
       )}
 
-      {/* 🎯 Recommended For You */}
+      {/* ✨ Recommended For You */}
       <div className="reveal-on-scroll">
         <RecommendationRow
-          title="🎯 Recommended For You"
+          title="✨ Recommended For You"
           movies={applyFilters(hybridRecs)}
           loading={loadingHybrid}
           emptyMessage="Complete your profile to get better matches!"
