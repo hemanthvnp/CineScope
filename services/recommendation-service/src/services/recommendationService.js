@@ -533,9 +533,14 @@ const getUserWatchlist = async (userId, options = {}) => {
  * Remove a movie from user's watchlist
  */
 const removeFromWatchlist = async (userId, movieId) => {
+  const numericMovieId = Number(movieId)
+  if (!Number.isFinite(numericMovieId)) {
+    throw new Error("movie_id must be numeric")
+  }
+
   const result = await UserWatchlist.findOneAndDelete({
     user_id: new mongoose.Types.ObjectId(userId),
-    movie_id: movieId
+    movie_id: numericMovieId
   })
 
   logger.info("Watchlist item removed", { userId, movieId, removed: Boolean(result) })

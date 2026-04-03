@@ -2,6 +2,7 @@ const Rating = require("../models/Rating")
 const axios = require("axios")
 
 const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"
 
 /**
  * POST /api/ratings
@@ -37,6 +38,13 @@ const submitRating = async (req, res) => {
       )
     } catch (syncError) {
       console.warn("Failed to sync rating to recommendation service:", syncError.message)
+    }
+
+    // Trigger ML service refresh (asynchronous)
+    try {
+      axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch(() => {})
+    } catch (refreshError) {
+      // Ignore refresh errors, they shouldn't block the response
     }
 
     return res.status(200).json({

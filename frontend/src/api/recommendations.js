@@ -13,38 +13,16 @@ import api from "./axios"
  */
 export const getHybridRecommendations = async (userId, limit = 20) => {
   try {
-    // Try ML service first
-    const response = await api.post("/ml-service/recommend", {
-      userId,
-      limit
+    const response = await api.get(`/recommendations/${userId}`, {
+      params: { limit }
     })
     return response.data
   } catch (error) {
-    console.warn("ML service unavailable, falling back to genre recommendations:", error.message)
-    // Fallback to Node.js genre-based recommendations
-    const fallbackResponse = await api.get(`/recommendations/${userId}`, {
-      params: { limit }
-    })
-    // Transform fallback response to match expected structure
-    const recommendations = fallbackResponse.data.recommendations || []
+    console.error("Failed to fetch recommendations:", error.message)
     return {
-      recommendations: recommendations.map(rec => ({
-        ...rec,
-        movie_id: rec.movie_id,
-        explanation: rec.explanation || {
-          type: "genre_match",
-          reason: rec.matching_genre_names && rec.matching_genre_names.length > 0
-            ? `Based on your interest in ${rec.matching_genre_names.join(", ")}`
-            : rec.matching_genres > 0
-            ? `Matches your interest in ${rec.matching_genres} genres`
-            : "Recommended based on your preferences"
-        }
-      })),
-      meta: {
-        ...fallbackResponse.data.meta,
-        strategy: "genre_fallback",
-        fallback_reason: "ml_service_unavailable"
-      }
+      success: false,
+      recommendations: [],
+      meta: { error: error.message }
     }
   }
 }
@@ -117,8 +95,15 @@ export const addMovieToWatchlist = async (movieId, status = "watchlist", rating 
     throw new Error("Unable to identify current user")
   }
 
+  // Ensure movieId is a number (TMDB ID)
+  const numericMovieId = Number(movieId)
+  if (!Number.isFinite(numericMovieId)) {
+    throw new Error("Invalid movieId - must be numeric")
+  }
+
+  // Use the common recommendation-service endpoint for consistency
   const response = await api.post(`/recommendations/${userId}/watchlist`, {
-    movie_id: movieId,
+    movie_id: numericMovieId,
     status,
     rating
   })

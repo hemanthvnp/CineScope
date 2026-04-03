@@ -5,6 +5,7 @@ const axios = require("axios")
 const movieRoutes = require("./routes/movieRoutes")
 const userRoutes = require("./routes/userRoutes")
 const ratingRoutes = require("./routes/ratingRoutes")
+const watchlistRoutes = require("./routes/watchlistRoutes")
 
 const app = express()
 
@@ -19,6 +20,7 @@ app.use(express.json())
 app.use("/api/movies", movieRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/ratings", ratingRoutes)
+app.use("/api/watchlist", watchlistRoutes)
 
 // ML Service Proxy - Hybrid recommendations
 // GET /api/recommendations/:userId calls ML service first, falls back to genre-based
@@ -31,7 +33,13 @@ app.get("/api/recommendations/:userId", async (req, res) => {
     const mlResponse = await axios.post(
       `${ML_SERVICE_URL}/recommend`,
       { userId, limit },
-      { timeout: 15000 }
+      { 
+        timeout: 45000, // Increased to 45s for deep pool searches
+        headers: {
+          "Content-Type": "application/json",
+          ...(req.headers.authorization && { Authorization: req.headers.authorization })
+        }
+      }
     )
     return res.json(mlResponse.data)
   } catch (mlError) {
@@ -57,7 +65,9 @@ app.get("/api/recommendations/:userId", async (req, res) => {
 // API Gateway - Proxy other recommendation routes to recommendation microservice
 app.use("/api/recommendations", async (req, res) => {
   try {
-    const targetUrl = `${RECOMMENDATION_SERVICE_URL}/api/recommendations${req.url}`
+    // Strip /api prefix when proxying to microservices
+    const relativePath = req.originalUrl.replace("/api/recommendations", "")
+    const targetUrl = `${RECOMMENDATION_SERVICE_URL}/api/recommendations${relativePath}`
 
     const response = await axios({
       method: req.method,
@@ -85,6 +95,42 @@ app.use("/api/recommendations", async (req, res) => {
       res.status(500).json({
         success: false,
         error: "Failed to proxy request to recommendation service"
+      })
+    }
+  }
+})
+
+// ML Service Proxy - Direct access to ML service
+app.use("/api/ml-service", async (req, res) => {
+  try {
+    const targetUrl = `${ML_SERVICE_URL}${req.url}`
+
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      data: req.body,
+      headers: {
+        "Content-Type": "application/json",
+        // Forward auth headers if present
+        ...(req.headers.authorization && { Authorization: req.headers.authorization })
+      },
+      timeout: 30000
+    })
+
+    res.status(response.status).json(response.data)
+  } catch (error) {
+    if (error.response) {
+      // Forward error response from microservice
+      res.status(error.response.status).json(error.response.data)
+    } else if (error.code === "ECONNREFUSED") {
+      res.status(503).json({
+        success: false,
+        error: "ML service unavailable"
+      })
+    } else {
+      res.status(500).json({
+        success: false,
+        error: "Failed to proxy request to ML service"
       })
     }
   }
