@@ -35,7 +35,7 @@ app.get("/api/recommendations/:userId", async (req, res) => {
       `${ML_SERVICE_URL}/recommend`,
       { userId, limit },
       { 
-        timeout: 45000, // Increased to 45s for deep pool searches
+        timeout: 60000, // Increased to 60s for deep pool searches
         headers: {
           "Content-Type": "application/json",
           ...(req.headers.authorization && { Authorization: req.headers.authorization })
@@ -50,7 +50,7 @@ app.get("/api/recommendations/:userId", async (req, res) => {
   // Fallback: proxy to Node.js recommendation service
   try {
     const fallbackUrl = `${RECOMMENDATION_SERVICE_URL}/api/recommendations/${userId}?limit=${limit}`
-    const fallbackResponse = await axios.get(fallbackUrl, { timeout: 10000 })
+    const fallbackResponse = await axios.get(fallbackUrl, { timeout: 30000 })
     return res.json(fallbackResponse.data)
   } catch (fallbackError) {
     if (fallbackError.response) {
@@ -79,7 +79,7 @@ app.use("/api/recommendations", async (req, res) => {
         // Forward auth headers if present
         ...(req.headers.authorization && { Authorization: req.headers.authorization })
       },
-      timeout: 30000
+      timeout: 60000
     })
 
     res.status(response.status).json(response.data)
@@ -115,7 +115,7 @@ app.use("/api/ml-service", async (req, res) => {
         // Forward auth headers if present
         ...(req.headers.authorization && { Authorization: req.headers.authorization })
       },
-      timeout: 30000
+      timeout: 60000
     })
 
     res.status(response.status).json(response.data)

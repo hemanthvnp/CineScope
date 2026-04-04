@@ -24,7 +24,13 @@ def get_database():
         return _db
 
     mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/cinescope")
-    _client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    # Add timeouts to prevent the service from hanging on bad connections
+    _client = MongoClient(
+        mongo_uri, 
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=30000
+    )
     _db = _client.get_default_database(default="test")
     _client.admin.command("ping")
     print("[ml-service] MongoDB connected")

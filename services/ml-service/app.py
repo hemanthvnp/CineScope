@@ -53,17 +53,25 @@ class HealthResponse(BaseModel):
 async def lifespan(app: FastAPI):
     """
     On startup: connect to MongoDB and build ML models.
-    This runs the heavy TF-IDF and SVD computations once.
     """
-    try:
-        initialize_models()
-        print("[ml-service] Ready to serve recommendations")
-    except Exception as e:
-        print(f"[ml-service] WARNING: Model initialization failed: {e}")
-        print("[ml-service] Service will start but recommendations may be limited")
-        traceback.print_exc()
+    import asyncio
+    
+    # We initialize models in a non-blocking background task.
+    # This allows the API to bind to the port immediately and pass Render's health checks.
+    async def _init_task():
+        try:
+            print("[ml-service] Starting background model initialization...")
+            initialize_models()
+            print("[ml-service] Model initialization complete. Ready to serve recommendations.")
+        except Exception as e:
+            print(f"[ml-service] WARNING: Background model initialization failed: {e}")
+            traceback.print_exc()
+
+    init_task = asyncio.create_task(_init_task())
+    
     yield
     print("[ml-service] Shutting down")
+    init_task.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -148,4 +156,5 @@ async def refresh_models():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
+    # reload=False for production stability
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)

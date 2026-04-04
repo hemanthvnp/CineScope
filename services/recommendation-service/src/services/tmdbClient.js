@@ -97,32 +97,45 @@ const fetchMovieDetails = async (movieId) => {
 /**
  * Fetch details for multiple movie IDs from TMDB
  * Returns a map of movie_id -> movie data
+ * Uses parallel fetching with concurrency control to avoid timeouts
  */
 const fetchMoviesByIds = async (movieIds) => {
   const movieMap = new Map()
-  const uncachedIds = []
-
-  // Check cache first
-  for (const id of movieIds) {
+  const uncachedIds = movieIds.filter(id => {
     const cached = cacheGet(`movie_${id}`)
     if (cached) {
       movieMap.set(id, cached)
-    } else {
-      uncachedIds.push(id)
+      return false
     }
-  }
+    return true
+  })
 
-  // Fetch uncached movies (batch with small delays)
-  for (let i = 0; i < uncachedIds.length; i++) {
-    try {
-      const movie = await fetchMovieDetails(uncachedIds[i])
-      movieMap.set(uncachedIds[i], movie)
-    } catch (error) {
-      console.warn(`[tmdbClient] Failed to fetch movie ${uncachedIds[i]}:`, error.message)
+  // Batch process uncached IDs in chunks of 10 to respect TMDB rate limits
+  const BATCH_SIZE = 10
+  for (let i = 0; i < uncachedIds.length; i += BATCH_SIZE) {
+    const batch = uncachedIds.slice(i, i + BATCH_SIZE)
+    
+    // Fetch batch in parallel
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const movie = await fetchMovieDetails(id)
+          return { id, movie }
+        } catch (error) {
+          console.warn(`[tmdbClient] Failed to fetch movie ${id}:`, error.message)
+          return { id, movie: null }
+        }
+      })
+    )
+
+    // Add batch results to map
+    for (const { id, movie } of results) {
+      if (movie) movieMap.set(id, movie)
     }
-    // Throttle to avoid rate limiting
-    if (i < uncachedIds.length - 1 && i % 5 === 4) {
-      await new Promise(resolve => setTimeout(resolve, 200))
+
+    // Small delay between batches to be nice to TMDB
+    if (i + BATCH_SIZE < uncachedIds.length) {
+      await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
 
