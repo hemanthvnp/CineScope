@@ -24,12 +24,10 @@ const SearchPage = () => {
   const genreFilter = searchParams.get("genre") || ""
   const languageFilter = searchParams.get("language") || ""
 
-  // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1)
   }, [query, yearFilter, genreFilter, languageFilter])
 
-  // Sync URL params to context
   useEffect(() => {
     setSearch(query)
     setYear(yearFilter)
@@ -40,7 +38,6 @@ const SearchPage = () => {
 
   useEffect(() => {
     const fetchSearchResults = async () => {
-      // Allow fetching if we have a query OR filters (year/genre/language)
       if (!query.trim() && !yearFilter && !genreFilter && !languageFilter) {
         setResults([])
         setLoading(false)
@@ -73,7 +70,6 @@ const SearchPage = () => {
         if (page === 1) {
           setResults(mappedResults)
         } else {
-          // Prevent duplicates if the effect re-runs
           setResults(prev => {
             const existingIds = new Set(prev.map(r => r.movie_id || r.id))
             const newResults = mappedResults.filter(r => !existingIds.has(r.movie_id || r.id))

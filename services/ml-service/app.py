@@ -1,19 +1,4 @@
-"""
-CineScope ML Recommendation Service
 
-A FastAPI microservice that provides hybrid movie recommendations
-combining content-based (TF-IDF) and collaborative (SVD) filtering.
-
-Endpoints:
-  POST /recommend  — Get personalized recommendations for a user
-  GET  /health     — Service health check
-  POST /refresh    — Rebuild ML models from latest data
-
-Architecture:
-  This service reads from the same MongoDB as the Node.js
-  recommendation-service. It handles all ML/AI computation and
-  returns enriched recommendations with explanations.
-"""
 
 import os
 import traceback
@@ -30,9 +15,7 @@ from typing import Optional
 from recommender.hybrid import initialize_models, get_hybrid_recommendations
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models for request/response validation
-# ---------------------------------------------------------------------------
+
 
 class RecommendRequest(BaseModel):
     userId: str = Field(..., description="MongoDB ObjectId of the user")
@@ -45,19 +28,12 @@ class HealthResponse(BaseModel):
     version: str = "1.0.0"
 
 
-# ---------------------------------------------------------------------------
-# Application lifecycle
-# ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    On startup: connect to MongoDB and build ML models.
-    """
     import asyncio
     
-    # We initialize models in a non-blocking background task.
-    # This allows the API to bind to the port immediately and pass Render's health checks.
     async def _init_task():
         try:
             print("[ml-service] Starting background model initialization...")
@@ -74,9 +50,7 @@ async def lifespan(app: FastAPI):
     init_task.cancel()
 
 
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
+
 
 app = FastAPI(
     title="CineScope ML Recommendation Service",
@@ -85,7 +59,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS — allow all origins in development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -95,29 +68,15 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Service health check endpoint."""
     return HealthResponse()
 
 
 @app.post("/recommend")
 async def recommend(request: RecommendRequest):
-    """
-    Get personalized movie recommendations for a user.
-
-    The engine selects the best strategy based on available user data:
-    - **hybrid**: Full TF-IDF + SVD combination (enough ratings)
-    - **content_only**: TF-IDF only (some ratings, not enough for SVD)
-    - **genre_fallback**: Genre preference scoring (no ratings, has preferences)
-    - **trending_fallback**: Popular movies (no user data at all)
-
-    Each recommendation includes an explanation for transparency.
-    """
     try:
         result = get_hybrid_recommendations(
             user_id=request.userId,
@@ -136,10 +95,6 @@ async def recommend(request: RecommendRequest):
 
 @app.post("/refresh")
 async def refresh_models():
-    """
-    Rebuild ML models from latest database data.
-    Call this after significant new ratings or data changes.
-    """
     try:
         initialize_models()
         return {"status": "success", "message": "Models refreshed successfully"}
@@ -150,11 +105,8 @@ async def refresh_models():
         )
 
 
-# ---------------------------------------------------------------------------
-# Run with: python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    # reload=False for production stability
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)

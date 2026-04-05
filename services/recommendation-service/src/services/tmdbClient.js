@@ -1,9 +1,4 @@
-/**
- * TMDB API Client for the Recommendation Service
- *
- * Fetches movie data directly from TMDB instead of a local database.
- * Includes in-memory caching with TTL to avoid rate-limit issues.
- */
+
 
 const axios = require("axios")
 
@@ -14,10 +9,8 @@ const tmdbApi = axios.create({
   timeout: 10000,
   headers: { Accept: "application/json" }
 })
-
-// ── Simple in-memory cache ───────────────────────────────────────────
 const _cache = new Map()
-const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+const CACHE_TTL = 15 * 60 * 1000
 
 const cacheGet = (key) => {
   const entry = _cache.get(key)
@@ -33,7 +26,6 @@ const cacheSet = (key, data) => {
   _cache.set(key, { data, ts: Date.now() })
 }
 
-// ── Retry wrapper ────────────────────────────────────────────────────
 const fetchWithRetry = async (url, params, retries = 3) => {
   for (let i = 0; i < retries; i++) {
     try {
@@ -46,12 +38,6 @@ const fetchWithRetry = async (url, params, retries = 3) => {
   }
 }
 
-// ── Public API ───────────────────────────────────────────────────────
-
-/**
- * Fetch multiple pages of popular movies (for building recommendation pool)
- * Returns array of movie objects with genre_ids included
- */
 const fetchPopularMovies = async (pages = 5) => {
   const cacheKey = `popular_bulk_${pages}`
   const cached = cacheGet(cacheKey)
@@ -65,7 +51,6 @@ const fetchPopularMovies = async (pages = 5) => {
         page
       })
       allMovies.push(...response.data.results)
-      // Small delay to respect rate limits
       if (page < pages) {
         await new Promise(resolve => setTimeout(resolve, 200))
       }
@@ -78,9 +63,6 @@ const fetchPopularMovies = async (pages = 5) => {
   return allMovies
 }
 
-/**
- * Fetch movie details by ID from TMDB
- */
 const fetchMovieDetails = async (movieId) => {
   const cacheKey = `movie_${movieId}`
   const cached = cacheGet(cacheKey)
@@ -94,11 +76,6 @@ const fetchMovieDetails = async (movieId) => {
   return response.data
 }
 
-/**
- * Fetch details for multiple movie IDs from TMDB
- * Returns a map of movie_id -> movie data
- * Uses parallel fetching with concurrency control to avoid timeouts
- */
 const fetchMoviesByIds = async (movieIds) => {
   const movieMap = new Map()
   const uncachedIds = movieIds.filter(id => {
@@ -110,12 +87,10 @@ const fetchMoviesByIds = async (movieIds) => {
     return true
   })
 
-  // Batch process uncached IDs in chunks of 10 to respect TMDB rate limits
   const BATCH_SIZE = 10
   for (let i = 0; i < uncachedIds.length; i += BATCH_SIZE) {
     const batch = uncachedIds.slice(i, i + BATCH_SIZE)
     
-    // Fetch batch in parallel
     const results = await Promise.all(
       batch.map(async (id) => {
         try {
@@ -128,12 +103,10 @@ const fetchMoviesByIds = async (movieIds) => {
       })
     )
 
-    // Add batch results to map
     for (const { id, movie } of results) {
       if (movie) movieMap.set(id, movie)
     }
 
-    // Small delay between batches to be nice to TMDB
     if (i + BATCH_SIZE < uncachedIds.length) {
       await new Promise(resolve => setTimeout(resolve, 300))
     }
@@ -142,9 +115,6 @@ const fetchMoviesByIds = async (movieIds) => {
   return movieMap
 }
 
-/**
- * Discover movies by genre from TMDB
- */
 const discoverByGenre = async (genreId, page = 1) => {
   const cacheKey = `discover_genre_${genreId}_${page}`
   const cached = cacheGet(cacheKey)
@@ -162,9 +132,6 @@ const discoverByGenre = async (genreId, page = 1) => {
   return response.data.results
 }
 
-/**
- * Get trending movies from TMDB
- */
 const fetchTrendingMovies = async (limit = 40) => {
   const cacheKey = `trending_${limit}`
   const cached = cacheGet(cacheKey)

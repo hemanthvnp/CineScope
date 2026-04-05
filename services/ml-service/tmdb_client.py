@@ -1,9 +1,4 @@
-"""
-CineScope ML Service — TMDB API Client
 
-Fetches movie data directly from TMDB instead of local MongoDB.
-Includes in-memory caching with TTL.
-"""
 
 import os
 import time
@@ -13,10 +8,8 @@ from urllib3.util.retry import Retry
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 BASE_URL = "https://api.themoviedb.org/3"
-
-# Simple TTL cache
+CACHE_TTL = 900
 _cache = {}
-CACHE_TTL = 900  # 15 minutes
 
 
 def _cache_get(key):
@@ -32,8 +25,6 @@ def _cache_get(key):
 def _cache_set(key, data):
     _cache[key] = {"data": data, "ts": time.time()}
 
-
-# Setup session with retry strategy
 _session = requests.Session()
 _retry_strategy = Retry(
     total=5,
@@ -46,7 +37,6 @@ _session.mount("http://", _adapter)
 _session.mount("https://", _adapter)
 
 def _tmdb_get(path, params=None):
-    """Make a GET request to TMDB API."""
     if params is None:
         params = {}
     params["api_key"] = TMDB_API_KEY
@@ -61,10 +51,6 @@ def _tmdb_get(path, params=None):
 
 
 def fetch_popular_movies(pages=5):
-    """
-    Fetch multiple pages of popular movies from TMDB.
-    Returns list of movie dicts with keys matching the old DB schema.
-    """
     cache_key = f"popular_{pages}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -88,7 +74,7 @@ def fetch_popular_movies(pages=5):
                     "genre_ids": m.get("genre_ids", [])
                 })
             if page < pages:
-                time.sleep(0.5) # Increased to 0.5s to respect TMDB rate limits better during massive fetch
+                time.sleep(0.5)
         except Exception as e:
             print(f"[tmdb_client] Failed to fetch popular page {page}: {e}")
 
@@ -97,7 +83,6 @@ def fetch_popular_movies(pages=5):
 
 
 def fetch_trending_movies(limit=40):
-    """Fetch trending movies from TMDB."""
     cache_key = f"trending_{limit}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -130,7 +115,6 @@ def fetch_trending_movies(limit=40):
 
 
 def fetch_discover_movies(language="en", pages=2):
-    """Fetch movies by specific original_language to ensure diverse candidates."""
     cache_key = f"discover_lang_{language}_{pages}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -165,7 +149,6 @@ def fetch_discover_movies(language="en", pages=2):
 
 
 def fetch_genre_list():
-    """Fetch the TMDB genre list."""
     cached = _cache_get("genre_list")
     if cached is not None:
         return cached
@@ -177,7 +160,6 @@ def fetch_genre_list():
 
 
 def fetch_movie_details(movie_id):
-    """Fetch details for a specific movie by TMDB ID."""
     cache_key = f"movie_details_{movie_id}"
     cached = _cache_get(cache_key)
     if cached is not None:

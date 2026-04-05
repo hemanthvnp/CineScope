@@ -1,27 +1,4 @@
-"""
-CineScope ML Service — Hybrid Recommendation Engine
 
-Combines content-based and collaborative filtering scores to produce
-the final recommendation list. Also handles cold-start scenarios.
-
-Scoring formula:
-    base_score = (CONTENT_WEIGHT × content_score) + (COLLAB_WEIGHT × collab_score)
-    final_score = base_score × preference_multiplier
-
-Preference multiplier applies boosts for:
-    - Language match   : +150% if movie language matches user's preferred language
-    - Era match        : +10% if movie release year falls in user's favorite era
-    - Genre match      : +10% if movie genre matches user's favorite genre
-
-Additionally, 60% of results will prioritize the user's preferred language.
-
-Default weights: CONTENT_WEIGHT=0.4, COLLAB_WEIGHT=0.6
-
-Cold-start handling:
-- New user with no ratings → genre-based fallback using their preferences
-- New user with no preferences and no ratings → trending movies
-- User with few ratings (< MIN_RATINGS_FOR_COLLAB) → content-only mode
-"""
 
 import os
 import re
@@ -34,21 +11,17 @@ from database import (
 )
 import tmdb_client
 
-# Hybrid weights
-CONTENT_WEIGHT = 0.75   # Increased from 0.7 for stronger historical matching
-COLLAB_WEIGHT = 0.25    # Decreased from 0.3 for less general community influence
+CONTENT_WEIGHT = 0.75
+COLLAB_WEIGHT = 0.25
 DEFAULT_LIMIT = int(os.getenv("DEFAULT_LIMIT", "20"))
 MIN_RATINGS_FOR_COLLAB = int(os.getenv("MIN_RATINGS_FOR_COLLAB", "3"))
 MIN_ACCEPTABLE_VOTE_AVG = float(os.getenv("MIN_ACCEPTABLE_VOTE_AVG", "6.0"))
 MIN_ACCEPTABLE_VOTE_COUNT = int(os.getenv("MIN_ACCEPTABLE_VOTE_COUNT", "80"))
 
-# Preference boost multipliers
-LANG_BOOST = 2.0        # +200% for matching preferred language (strong priority)
-ERA_BOOST = 0.25        # +25% for matching favorite era
-GENRE_BOOST = 0.25      # +25% for matching favorite genre
-LANG_PRIORITY_RATIO = 0.7  # 70% of results should be from preferred language if available
-
-# Cache for movie data
+LANG_BOOST = 2.0
+ERA_BOOST = 0.25
+GENRE_BOOST = 0.25
+LANG_PRIORITY_RATIO = 0.7
 _movies_lookup = {}
 _genre_names = {}
 _genre_name_to_id = {}
@@ -57,20 +30,14 @@ _models_initialized = False
 
 
 def initialize_models():
-    """
-    Load data from MongoDB and build both ML models.
-    Called once at startup and can be re-triggered to refresh.
-    """
     global _movies_lookup, _genre_names, _genre_name_to_id, _movie_genre_map, _models_initialized
 
     print("[ml-service] Initializing recommendation models...")
 
-    # Load reference data
     movies = get_all_movies()
     _genre_names = get_all_genres()
     _genre_name_to_id = {name.lower(): gid for gid, name in _genre_names.items()}
 
-    # Build lookup and genre maps directly from fetched movies
     _movies_lookup = {}
     _movie_genre_map = {}
     for m in movies:
@@ -78,30 +45,20 @@ def initialize_models():
         _movies_lookup[mid] = m
         _movie_genre_map[mid] = m.get("genre_ids", [])
 
-    # Build content-based model (TF-IDF)
     content_based.build_tfidf_model(movies, _movie_genre_map, _genre_names)
-
-    # Build collaborative model (SVD)
-    all_ratings = get_all_user_ratings()
-    collaborative.build_svd_model(all_ratings)
 
     _models_initialized = True
     print(f"[ml-service] Models initialized. {len(movies)} movies, "
           f"{len(_genre_names)} genres, {len(all_ratings)} ratings")
 
 
-# ---- Preference Helpers ----
+
 
 def _parse_era(era_str):
-    """
-    Parse era string like '2010s', '1990s', '2000-2010', 'Modern' into
-    a (start_year, end_year) tuple. Returns None if unparseable.
-    """
     if not era_str:
         return None
     era = era_str.strip().lower()
 
-    # Match "2010s" → 2010-2019
     m = re.match(r"(\d{4})s", era)
     if m:
         start = int(m.group(1))
@@ -112,7 +69,6 @@ def _parse_era(era_str):
     if m:
         return (int(m.group(1)), int(m.group(2)))
 
-    # Match "Modern" → 2010+, "Classic" → pre-1980
     era_aliases = {
         "modern": (2010, 2030),
         "contemporary": (2000, 2030),
@@ -131,7 +87,6 @@ def _parse_era(era_str):
 
 
 def _get_movie_year(movie):
-    """Extract release year from a movie's release_date."""
     rd = movie.get("release_date")
     if not rd:
         return None
@@ -148,9 +103,6 @@ def _safe_float(value, default=0.0):
 
 
 def _compute_quality_score(movie):
-    """
-    Compute a quality score in [0,1] from vote average, confidence, popularity.
-    """
     if not movie:
         return 0.0
 
@@ -166,17 +118,12 @@ def _compute_quality_score(movie):
 
 
 def _passes_quality_floor(movie, is_regional=False):
-    """
-    Filter out weak titles when enough stronger options exist.
-    Regional languages (non-English) have lower vote count thresholds.
-    """
     if not movie:
         return False
     
     vote_avg = _safe_float(movie.get("vote_average"), 0.0)
     vote_count = _safe_float(movie.get("vote_count"), 0.0)
     
-    # Relaxed floor for regional cinema or high-rated gems
     min_votes = MIN_ACCEPTABLE_VOTE_COUNT if not is_regional else max(30, MIN_ACCEPTABLE_VOTE_COUNT // 3)
     min_avg = MIN_ACCEPTABLE_VOTE_AVG if not is_regional else 6.0
     
@@ -184,18 +131,6 @@ def _passes_quality_floor(movie, is_regional=False):
 
 
 def _compute_preference_boost(movie_id, user_profile):
-    """
-    Compute a preference multiplier for a movie based on user profile settings.
-
-    Boosts:
-      - Language match: +15% if the movie's language matches preferredLanguage
-      - Era match: +10% if the movie's release year is within favoriteEra
-      - Genre match: +10% if any of the movie's genres match favoriteGenre
-
-    Returns:
-        (multiplier, boost_reasons) where multiplier >= 1.0
-        boost_reasons: list of strings explaining which boosts were applied
-    """
     movie = _movies_lookup.get(movie_id)
     if not movie:
         return 1.0, []
@@ -203,7 +138,6 @@ def _compute_preference_boost(movie_id, user_profile):
     multiplier = 1.0
     boost_reasons = []
 
-    # Language boost
     pref_lang = (user_profile.get("preferredLanguage") or "").lower().strip()
     if pref_lang:
         movie_lang = (movie.get("language") or "").lower().strip()
@@ -211,7 +145,6 @@ def _compute_preference_boost(movie_id, user_profile):
             multiplier += LANG_BOOST
             boost_reasons.append(f"In your preferred language")
 
-    # Era boost
     fav_era = user_profile.get("favoriteEra", "")
     era_range = _parse_era(fav_era)
     if era_range:
@@ -220,7 +153,6 @@ def _compute_preference_boost(movie_id, user_profile):
             multiplier += ERA_BOOST
             boost_reasons.append(f"From your favorite era ({fav_era})")
 
-    # Genre boost (favoriteGenre from user profile, separate from genre preference scores)
     fav_genre = user_profile.get("favoriteGenre", "").lower().strip()
     if fav_genre:
         movie_genre_ids = _movie_genre_map.get(movie_id, [])
@@ -232,34 +164,25 @@ def _compute_preference_boost(movie_id, user_profile):
     return multiplier, boost_reasons
 
 
-# ---- Main Recommendation Entry Point ----
+
 
 def get_hybrid_recommendations(user_id, limit=None):
-    """
-    Generate hybrid recommendations for a user.
-
-    This is the main entry point. It orchestrates content-based,
-    collaborative, and fallback strategies, then applies preference boosts.
-    """
     if not _models_initialized:
         initialize_models()
 
     limit = limit or DEFAULT_LIMIT
 
-    # Get user's data
     user_rated = get_user_rated_movies(user_id)
     user_prefs = get_user_preferences(user_id)
     user_watchlist = get_user_watchlist(user_id)
     user_profile = get_user_profile(user_id)
 
-    # Movie IDs to exclude (already in watchlist/rated)
     exclude_ids = set()
     for entry in user_watchlist:
         exclude_ids.add(entry["movie_id"])
     for mid in user_rated:
         exclude_ids.add(mid)
 
-    # Determine recommendation strategy
     has_ratings = len(user_rated) > 0
     has_prefs = len(user_prefs) > 0
     has_profile_prefs = bool(user_profile.get("preferredLanguage") or
@@ -278,22 +201,19 @@ def get_hybrid_recommendations(user_id, limit=None):
     else:
         recommendations = _trending_fallback_recommend(exclude_ids, limit * 2, user_profile)
 
-    # DYNAMICALLY MERGE ANY MISSING LANGUAGE CANDIDATES
     pref_lang = (user_profile.get("preferredLanguage") or "").lower().strip()
     if pref_lang and pref_lang != "en":
         existing_mids = {r["movie_id"] for r in recommendations}
         try:
-            lang_movies = tmdb_client.fetch_discover_movies(language=pref_lang, pages=8) # More pages
+            lang_movies = tmdb_client.fetch_discover_movies(language=pref_lang, pages=8)
             
             injected_count = 0
             for m in lang_movies:
                 mid = m["movie_id"]
                 if mid not in existing_mids and mid not in exclude_ids:
                     is_m_regional = (m.get("language") or m.get("original_language") or "").lower() != "en"
-                    # For language injection, we use a VERY relaxed floor to ensure we get results
                     if not _passes_quality_floor(m, is_regional=True):
                         continue
-                    # Add to results with a base score derived from popularity
                     recommendations.append({
                         "movie_id": mid,
                         "score": round(min(m.get("popularity", 0) / 1000.0, 1.0), 4),
@@ -303,7 +223,6 @@ def get_hybrid_recommendations(user_id, limit=None):
                         }
                     })
                     injected_count += 1
-                    # Populate lookup if missing
                     if mid not in _movies_lookup:
                         _movies_lookup[mid] = m
                         _movie_genre_map[mid] = m.get("genre_ids", [])
@@ -313,10 +232,8 @@ def get_hybrid_recommendations(user_id, limit=None):
         except Exception as e:
             print(f"[ml-service] WARNING: Language discovery failed for {pref_lang}: {e}")
 
-    # Final validation and Tier Sorting (this is the ONLY place we should truncate to limit)
     recommendations = _apply_preference_boosts(recommendations, user_profile, limit)
 
-    # SECURE CHECK: Ensure recommendations is a list of dicts
     valid_recs = []
     for r in recommendations:
         if isinstance(r, dict) and "movie_id" in r:
@@ -324,7 +241,6 @@ def get_hybrid_recommendations(user_id, limit=None):
         else:
             print(f"[ml-service] WARNING: Dropping invalid recommendation item: {r}")
     
-    # Add explanations
     recommendations = explainer.explain_batch(
         valid_recs, _movies_lookup, _genre_names, _movie_genre_map
     )
@@ -351,7 +267,6 @@ def get_hybrid_recommendations(user_id, limit=None):
 
 
 def _determine_strategy(has_ratings, has_prefs, has_enough_for_collab):
-    """Determine which recommendation strategy to use."""
     if has_ratings and has_enough_for_collab and collaborative.is_model_built():
         return "hybrid"
     elif has_ratings:
@@ -363,21 +278,11 @@ def _determine_strategy(has_ratings, has_prefs, has_enough_for_collab):
 
 
 def _apply_preference_boosts(results, user_profile, limit):
-    """
-    Apply intersection-based preference clustering to a list of results.
-    Instead of multiplying scores, movies are grouped into Tiers based on 
-    how many profile preferences they match:
-        Tier 3: Matches Language, Era, AND Genre
-        Tier 2: Matches 2 of the 3
-        Tier 1: Matches 1 of the 3
-        Tier 0: Matches none (baseline)
-    """
     pref_lang = (user_profile.get("preferredLanguage") or "").lower().strip()
     fav_era = user_profile.get("favoriteEra", "")
     era_range = _parse_era(fav_era)
     fav_genre = (user_profile.get("favoriteGenre") or "").lower().strip()
 
-    # If the user hasn't set any profile preferences, just sort by score and return
     if not pref_lang and not era_range and not fav_genre:
         def _no_pref_sort_key(rec):
             movie = _movies_lookup.get(rec["movie_id"], {})
@@ -397,10 +302,6 @@ def _apply_preference_boosts(results, user_profile, limit):
             return high_quality[:limit]
         return (high_quality + [r for r in results if r not in high_quality])[:limit]
 
-    # Group results by how many active preferences they satisfy.
-    # This enforces intersection-first ranking:
-    #   1) movies matching ALL active preferences first
-    #   2) then movies matching (N-1), then (N-2), ...
     active_pref_count = int(bool(pref_lang)) + int(bool(era_range)) + int(bool(fav_genre))
     tiers = {i: [] for i in range(active_pref_count + 1)}
 
@@ -413,14 +314,12 @@ def _apply_preference_boosts(results, user_profile, limit):
         match_count = 0
         boost_reasons = []
 
-        # 1. Language match
         if pref_lang:
             movie_lang = (movie.get("language") or movie.get("original_language") or "").lower().strip()
             if movie_lang == pref_lang:
                 match_count += 1
                 boost_reasons.append("Language")
 
-        # 2. Genre match
         if fav_genre:
             movie_genre_ids = _movie_genre_map.get(rec["movie_id"], [])
             movie_genre_lower = [_genre_names.get(gid, "").lower() for gid in movie_genre_ids]
@@ -428,14 +327,12 @@ def _apply_preference_boosts(results, user_profile, limit):
                 match_count += 1
                 boost_reasons.append("Genre")
 
-        # 3. Era match
         if era_range:
             movie_year = _get_movie_year(movie)
             if movie_year and era_range[0] <= movie_year <= era_range[1]:
                 match_count += 1
                 boost_reasons.append("Era")
 
-        # Attach intersection details for explainability/debugging.
         rec_context = rec.get("context")
         if not isinstance(rec_context, dict):
             rec_context = {}
@@ -454,13 +351,11 @@ def _apply_preference_boosts(results, user_profile, limit):
 
         tiers[match_count].append(rec)
 
-    # Build final list by intersection strength: N -> ... -> 0
     final_results = []
     print(f"[ml-service] Final Intersection Tiers for {pref_lang}:")
     for s in range(active_pref_count, -1, -1):
         if tiers[s]:
             print(f"  Match Count {s}/{active_pref_count}: {len(tiers[s])} movies")
-            # Sort internally by blended relevance + quality score.
             def _tier_sort_key(rec):
                 movie = _movies_lookup.get(rec["movie_id"], {})
                 quality = rec.get("context", {}).get("quality_score", _compute_quality_score(movie))
@@ -475,7 +370,6 @@ def _apply_preference_boosts(results, user_profile, limit):
     if len(high_quality) >= limit:
         return high_quality[:limit]
 
-    # If we don't have enough high-quality results, fill with lower-quality but still relevant ones
     results_so_far = high_quality
     needed = limit - len(results_so_far)
     
@@ -483,7 +377,6 @@ def _apply_preference_boosts(results, user_profile, limit):
         low_quality = [r for r in final_results if not r.get("context", {}).get("passes_quality_floor")]
         results_so_far.extend(low_quality[:needed])
         
-    # FINAL SAFETY: If still less than limit, fill with trending movies in preferred language
     if len(results_so_far) < limit:
         needed = limit - len(results_so_far)
         exclude_ids.update({r["movie_id"] for r in results_so_far})
@@ -498,7 +391,6 @@ def _apply_preference_boosts(results, user_profile, limit):
                         "reason_type": "trending_discovery",
                         "context": {"discovery_lang": pref_lang or "ta"}
                     })
-                    # Populate lookup if missing
                     if m["movie_id"] not in _movies_lookup:
                         _movies_lookup[m["movie_id"]] = m
                         _movie_genre_map[m["movie_id"]] = m.get("genre_ids", [])
@@ -509,8 +401,7 @@ def _apply_preference_boosts(results, user_profile, limit):
 
 
 def _hybrid_recommend(user_id, user_rated, user_prefs, exclude_ids, limit, user_profile):
-    """Full hybrid: content + collaborative + preference boosts."""
-    pool_size = limit * 20  # Even deeper pool to find high-intersection matches in larger dataset
+    pool_size = limit * 20
 
     content_scores = content_based.get_content_scores(
         user_rated, exclude_ids, pool_size, user_profile, _movies_lookup
@@ -548,10 +439,8 @@ def _hybrid_recommend(user_id, user_rated, user_prefs, exclude_ids, limit, user_
             }
         })
 
-    # Sort internally before applying tiers, then pass full pool
     results.sort(key=lambda x: -x["score"])
     
-    # DEBUG LOG: Check how many candidates we have per language
     if results:
         langs = {}
         for r in results:
@@ -564,7 +453,6 @@ def _hybrid_recommend(user_id, user_rated, user_prefs, exclude_ids, limit, user_
 
 
 def _content_only_recommend(user_rated, exclude_ids, limit, user_profile):
-    """Content-based only + preference boosts."""
     pool_size = limit * 10
     content_scores = content_based.get_content_scores(
         user_rated, exclude_ids, pool_size, user_profile, _movies_lookup
@@ -586,10 +474,6 @@ def _content_only_recommend(user_rated, exclude_ids, limit, user_profile):
 
 
 def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
-    """
-    Enhanced genre-based fallback that intersects ALL user preferences.
-    Combines explicit genre ratings with profile preferences (genre, language, era).
-    """
     if not user_prefs and not (user_profile.get("favoriteGenre") or
                                 user_profile.get("preferredLanguage") or
                                 user_profile.get("favoriteEra")):
@@ -605,45 +489,37 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
             continue
         genre_ids = _movie_genre_map.get(mid, [])
         
-        # Calculate score based on how strongly the movie aligns
-        # with explicit genre preferences + profile preferences.
         score_factors = []
         matching_preferences = []
 
-        # 1. Explicit genre preference scores
         user_pref_score = sum(user_prefs.get(gid, 0) for gid in genre_ids)
         if user_pref_score > 0:
             score_factors.append(user_pref_score)
             matching_genres = [_genre_names.get(gid, "") for gid in genre_ids if gid in (user_prefs or {})]
             matching_preferences.extend(matching_genres)
 
-        # 2. Profile favorite genre match
         if fav_genre_lower:
             movie_genre_lower = [_genre_names.get(gid, "").lower() for gid in genre_ids]
             if fav_genre_lower in movie_genre_lower:
                 score_factors.append(2.0)
                 matching_preferences.append(fav_genre_lower.title())
 
-        # 3. Language preference match
         if pref_lang and pref_lang != "en":
             movie_lang = (movie.get("original_language") or "").lower()
             if movie_lang == pref_lang:
                 score_factors.append(1.5)
                 matching_preferences.append(f"{pref_lang.upper()} language")
 
-        # 4. Era preference match
         if pref_era:
             release_year = str(movie.get("release_date", "")).split("-")[0]
             if release_year and _is_era_match(release_year, pref_era):
                 score_factors.append(1.0)
                 matching_preferences.append(pref_era)
 
-        # Base popularity score (normalized)
         base_popularity = min(movie.get("popularity", 0) / 1000.0, 3.0)
         if base_popularity > 0:
             score_factors.append(base_popularity)
 
-        # Final score is sum of all matching factors
         final_score = sum(score_factors)
 
         if final_score > 0:
@@ -656,8 +532,7 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
 
     max_score = scored_movies[0][1] if scored_movies else 1
     results = []
-    for mid, score, genre_ids, matching_prefs, movie in scored_movies[:limit * 3]:  # Get more candidates
-        # Get genre names for explanation
+    for mid, score, genre_ids, matching_prefs, movie in scored_movies[:limit * 3]:
         genre_names = [_genre_names.get(gid, "") for gid in genre_ids if gid in _genre_names]
         
         results.append({
@@ -665,8 +540,8 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
             "score": round(score / max_score, 4),
             "reason_type": "genre_intersection",
             "context": {
-                "matching_genres": genre_names[:3],  # Top 3 genres
-                "matching_preferences": sorted(set(matching_prefs)),  # Unique preferences
+                "matching_genres": genre_names[:3],
+                "matching_preferences": sorted(set(matching_prefs)),
                 "genre_count": len([g for g in genre_ids if g in (user_prefs or {})]),
                 "language_match": bool(pref_lang and movie.get("original_language", "").lower() == pref_lang),
                 "era_match": bool(pref_era and _is_era_match(str(movie.get("release_date", "")).split("-")[0], pref_era))
@@ -677,7 +552,6 @@ def _genre_fallback_recommend(user_prefs, exclude_ids, limit, user_profile):
 
 
 def _is_era_match(release_year, era_preference):
-    """Check if a movie's release year matches the user's era preference."""
     if not release_year or not era_preference:
         return False
     
@@ -703,7 +577,6 @@ def _is_era_match(release_year, era_preference):
 
 
 def _trending_fallback_recommend(exclude_ids, limit, user_profile):
-    """Trending movies fallback + preference boosts."""
     trending_ids = get_trending_movie_ids(limit * 2 + len(exclude_ids))
 
     results = []
@@ -723,7 +596,6 @@ def _trending_fallback_recommend(exclude_ids, limit, user_profile):
 
 
 def _enrich_recommendations(recommendations):
-    """Add full movie details to each recommendation."""
     enriched = []
     for rec in recommendations:
         movie = _movies_lookup.get(rec["movie_id"])

@@ -23,7 +23,8 @@ import requests
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 BASE_URL = "https://api.themoviedb.org/3"
 CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_TTL = 3600  # 1 hour for disk cache
+CACHE_TTL = 3600
+API_RATE_LIMIT = 40
 
 
 @dataclass
@@ -285,18 +286,15 @@ class TMDBService:
             print(f"[tmdb_service] Loaded {len(cached)} diverse movies from cache")
             return [Movie(**m) for m in cached]
 
-        # Language distribution for diversity
         language_targets = [
-            ("en", 0.35),   # English: 35%
-            ("es", 0.10),   # Spanish: 10%
+            ("es", 0.10),
             ("fr", 0.08),   # French: 8%
             ("ko", 0.10),   # Korean: 10%
             ("ja", 0.10),   # Japanese: 10%
             ("hi", 0.08),   # Hindi: 8%
             ("zh", 0.05),   # Chinese: 5%
             ("de", 0.04),   # German: 4%
-            ("it", 0.04),   # Italian: 4%
-            (None, 0.06),   # General discovery: 6%
+            (None, 0.06),
         ]
 
         all_movies: List[Movie] = []
@@ -305,7 +303,7 @@ class TMDBService:
         for lang, ratio in language_targets:
             target = int(total_movies * ratio)
             movies = self.fetch_movies(
-                total_movies=target + 50,  # Fetch extra to account for duplicates
+                total_movies=target + 50,
                 languages=[lang] if lang else None
             )
 

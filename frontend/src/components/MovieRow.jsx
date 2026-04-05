@@ -9,16 +9,12 @@ const MovieRow = ({ title, fetchUrl, isLargeRow = false, filters = {} }) => {
   const [loading, setLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
   
-  // Destructure from search filter context
   const { search, year, genre, language } = useSearchFilter()
 
   useEffect(() => {
     const fetchMovies = async () => {
       setLoading(true)
       try {
-        // Since fetchUrl is relative, it would need api.get(fetchUrl) 
-        // but this component seems to have been used with various patterns.
-        // For now, we mainly ensure that its internal filtering is consistent.
         setMovies([])
         setLoading(false)
       } catch (error) {
@@ -42,20 +38,17 @@ const MovieRow = ({ title, fetchUrl, isLargeRow = false, filters = {} }) => {
       return false
     }
 
-    // filter by year
     if (effectiveFilters.year) {
       const movieYear = (movie.release_date || movie.year || "")?.split("-")[0]
       if (movieYear !== effectiveFilters.year) return false
     }
 
-    // filter by genre (using numeric ID from context)
     if (effectiveFilters.genre && movie.genre_ids) {
       if (!movie.genre_ids.includes(Number(effectiveFilters.genre))) {
         return false
       }
     }
 
-    // filter by language
     if (effectiveFilters.language) {
       if (movie.original_language !== effectiveFilters.language) {
         return false
