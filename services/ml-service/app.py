@@ -1,5 +1,3 @@
-
-
 import os
 import traceback
 from contextlib import asynccontextmanager
@@ -15,8 +13,6 @@ from typing import Optional
 from recommender.hybrid import initialize_models, get_hybrid_recommendations
 
 
-
-
 class RecommendRequest(BaseModel):
     userId: str = Field(..., description="MongoDB ObjectId of the user")
     limit: Optional[int] = Field(20, ge=1, le=100, description="Max recommendations")
@@ -26,8 +22,6 @@ class HealthResponse(BaseModel):
     service: str = "ml-recommendation-service"
     status: str = "healthy"
     version: str = "1.0.0"
-
-
 
 
 @asynccontextmanager
@@ -50,8 +44,6 @@ async def lifespan(app: FastAPI):
     init_task.cancel()
 
 
-
-
 app = FastAPI(
     title="CineScope ML Recommendation Service",
     description="Hybrid recommendation engine with TF-IDF and SVD",
@@ -68,9 +60,7 @@ app.add_middleware(
 )
 
 
-
-
-@app.get("/health", response_model=HealthResponse)
+@app.api_route("/health", methods=["GET", "HEAD"], response_model=HealthResponse)
 async def health_check():
     return HealthResponse()
 
