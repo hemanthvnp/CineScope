@@ -79,3 +79,6 @@ services:
     image:
       url: ghcr.io/hemanthvnp/cinescope-frontend:latest
     plan: free
+    envVars:
+      - key: BACKEND_URL
+        value: https://cinescope-backend.onrender.com
