@@ -1,0 +1,81 @@
+services:
+  - type: web
+    name: cinescope-recommendation-service
+    runtime: image
+    image:
+      url: ghcr.io/hemanthvnp/cinescope-recommendation-service:latest
+    plan: free
+    envVars:
+      - key: PORT
+        value: "5001"
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+
+  - type: web
+    name: cinescope-ml-service
+    runtime: image
+    image:
+      url: ghcr.io/hemanthvnp/cinescope-ml-service:latest
+    plan: free
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MONGO_URI
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: MIN_RATINGS_FOR_COLLAB
+        value: "1"
+      - key: CONTENT_WEIGHT
+        value: "0.4"
+      - key: COLLAB_WEIGHT
+        value: "0.6"
+      - key: DEBUG
+        value: "False"
+
+  - type: web
+    name: cinescope-backend
+    runtime: image
+    image:
+      url: ghcr.io/hemanthvnp/cinescope-backend:latest
+    plan: free
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: OTP_SECRET
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: RECOMMENDATION_SERVICE_URL
+        sync: false  # Set to https://cinescope-recommendation-service.onrender.com
+      - key: ML_SERVICE_URL
+        sync: false  # Set to https://cinescope-ml-service.onrender.com
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
+  - type: web
+    name: cinescope-frontend
+    runtime: image
+    image:
+      url: ghcr.io/hemanthvnp/cinescope-frontend:latest
+    plan: free

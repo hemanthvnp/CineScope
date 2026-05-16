@@ -1,0 +1,106 @@
+version: '3.8'
+
+networks:
+  cinescope-network:
+    driver: bridge
+
+volumes:
+  ml-models:
+
+services:
+  recommendation-service:
+    build:
+      context: ./services/recommendation-service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      - MONGO_URI=${MONGO_URI}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+    networks:
+      - cinescope-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5001/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ml-service:
+    build:
+      context: ./services/ml-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - MONGO_URI=${MONGO_URI}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - MIN_RATINGS_FOR_COLLAB=${MIN_RATINGS_FOR_COLLAB:-1}
+      - CONTENT_WEIGHT=${CONTENT_WEIGHT:-0.4}
+      - COLLAB_WEIGHT=${COLLAB_WEIGHT:-0.6}
+      - DEBUG=False
+    volumes:
+      - ml-models:/app/models
+    networks:
+      - cinescope-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=${MONGO_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:5001
+      - ML_SERVICE_URL=http://ml-service:8000
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
+      - OTP_SECRET=${OTP_SECRET}
+    depends_on:
+      recommendation-service:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    networks:
+      - cinescope-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - cinescope-network
+    restart: unless-stopped
