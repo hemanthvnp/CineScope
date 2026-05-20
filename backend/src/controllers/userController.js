@@ -287,6 +287,21 @@ const updateProfile = async (req, res) => {
 			return res.status(404).json({ message: "User not found." })
 		}
 
+		if (updates.favoriteGenre) {
+			const genreId = GENRE_NAME_TO_ID[updates.favoriteGenre.toLowerCase()]
+			if (genreId) {
+				try {
+					await axios.put(
+						`${RECOMMENDATION_SERVICE_URL}/api/recommendations/${req.auth.userId}/preferences`,
+						{ preferences: [{ genre_id: genreId, score: 10 }] },
+						{ timeout: 5000 }
+					)
+				} catch (prefError) {
+					console.warn("[userController] Failed to sync genre preference:", prefError.message)
+				}
+			}
+		}
+
 		return res.status(200).json({ message: "Profile updated.", user })
 	} catch (error) {
 		return res.status(500).json({ message: "Failed to update profile." })

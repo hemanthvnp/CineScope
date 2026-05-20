@@ -1,3 +1,24 @@
+/* AI mode toggle button */
+.ai-mode-btn {
+  background: transparent;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-radius: 5px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: .2rem .45rem;
+  transition: background .2s, color .2s, border-color .2s;
+  flex-shrink: 0;
+}
+.ai-mode-btn:hover { border-color: #a855f7; color: #e2e8f0; }
+.ai-mode-btn.active {
+  background: linear-gradient(135deg, #4f8ef7, #a855f7);
+  border-color: transparent;
+  color: #fff;
+}
+
 /* ============================================================
    ENHANCED SEARCH BAR
    ============================================================ */

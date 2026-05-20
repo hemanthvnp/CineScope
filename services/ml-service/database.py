@@ -1,5 +1,3 @@
-
-
 import os
 from pymongo import MongoClient
 from bson import ObjectId
@@ -94,10 +92,6 @@ def get_all_movies():
 
 def get_all_genres():
     return fetch_genre_list()
-
-
-def get_movie_genres():
-    return {}
 
 
 def get_user_preferences(user_id: str):

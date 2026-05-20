@@ -1,20 +1,3 @@
-"""
-Movie Clustering Microservice - REST API
-
-FastAPI-based REST API for movie clustering service.
-
-Endpoints:
-  GET  /health           - Service health check
-  POST /fetch-movies     - Fetch and cache TMDB movie data
-  GET  /cluster          - Run clustering and return all clusters
-  GET  /clusters         - Get cached clustering results
-  GET  /recommend/{id}   - Get recommendations from same cluster
-  POST /recluster        - Force re-clustering with new parameters
-
-Run with:
-  uvicorn clustering.api:app --host 0.0.0.0 --port 8001 --reload
-"""
-
 import os
 import traceback
 from pathlib import Path
@@ -22,7 +5,6 @@ from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 from enum import Enum
 
-# Load environment variables from .env file
 from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -36,12 +18,8 @@ from .preprocessing import MoviePreprocessor, PreprocessedData, summarize_prepro
 from .clustering import MovieClusterer, ClusteringResult
 
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
 
 class Settings:
-    """Application settings from environment variables."""
     TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
     PORT = int(os.getenv("CLUSTERING_PORT", 8001))
     DEFAULT_MOVIE_COUNT = 1000
@@ -53,10 +31,6 @@ class Settings:
 
 settings = Settings()
 
-
-# ---------------------------------------------------------------------------
-# Pydantic Models
-# ---------------------------------------------------------------------------
 
 class ClusteringAlgorithm(str, Enum):
     KMEANS = "kmeans"
@@ -159,10 +133,6 @@ class FilteredMoviesResponse(BaseModel):
     movies: List[MovieResponse]
 
 
-# ---------------------------------------------------------------------------
-# Global State (in-memory for simplicity; use Redis/DB in production)
-# ---------------------------------------------------------------------------
-
 class ServiceState:
     def __init__(self):
         self.tmdb_service: Optional[TMDBService] = None
@@ -182,13 +152,8 @@ class ServiceState:
 state = ServiceState()
 
 
-# ---------------------------------------------------------------------------
-# Application Lifecycle
-# ---------------------------------------------------------------------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize services on startup."""
     try:
         if settings.TMDB_API_KEY:
             state.tmdb_service = TMDBService(api_key=settings.TMDB_API_KEY)
@@ -210,10 +175,6 @@ async def lifespan(app: FastAPI):
     print("[clustering-api] Shutting down")
 
 
-# ---------------------------------------------------------------------------
-# FastAPI Application
-# ---------------------------------------------------------------------------
-
 app = FastAPI(
     title="Movie Clustering Microservice",
     description="Clusters movies by language, genre, and era using ML algorithms",
@@ -230,12 +191,7 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Helper Functions
-# ---------------------------------------------------------------------------
-
 def movie_to_response(movie: Movie) -> MovieResponse:
-    """Convert Movie dataclass to API response model."""
     genres = [state.genre_map.get(gid, str(gid)) for gid in movie.genre_ids]
     return MovieResponse(
         id=movie.id,
@@ -251,7 +207,6 @@ def movie_to_response(movie: Movie) -> MovieResponse:
 
 
 def cluster_to_response(cluster_id: int, include_movies: bool = False) -> ClusterResponse:
-    """Convert cluster info to API response."""
     if not state.clustering_result:
         raise HTTPException(status_code=400, detail="No clustering result available")
 
@@ -274,13 +229,9 @@ def cluster_to_response(cluster_id: int, include_movies: bool = False) -> Cluste
     )
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Service health check endpoint."""
     return HealthResponse(
         data_loaded=len(state.movies) > 0,
         movies_count=len(state.movies),
@@ -290,12 +241,6 @@ async def health_check():
 
 @app.post("/fetch-movies")
 async def fetch_movies(request: FetchMoviesRequest = None):
-    """
-    Fetch movies from TMDB and cache them.
-
-    This endpoint fetches movie data from TMDB API with pagination,
-    stores it in memory, and optionally saves to disk cache.
-    """
     if request is None:
         request = FetchMoviesRequest()
 
@@ -303,12 +248,10 @@ async def fetch_movies(request: FetchMoviesRequest = None):
         raise HTTPException(status_code=500, detail="TMDB service not initialized")
 
     try:
-        # Clear cache if requested
         if request.clear_cache:
             state.tmdb_service.clear_cache()
             state.reset()
 
-        # Fetch movies
         if request.diverse:
             movies = state.tmdb_service.fetch_diverse_movies(
                 total_movies=request.total_movies
@@ -321,7 +264,6 @@ async def fetch_movies(request: FetchMoviesRequest = None):
         state.movies = movies
         state.genre_map = state.tmdb_service.genre_map
 
-        # Update preprocessor with latest genre map
         state.preprocessor = MoviePreprocessor(genre_map=state.genre_map)
 
         return {
@@ -344,15 +286,6 @@ async def run_clustering(
     eps: float = Query(default=0.5),
     min_samples: int = Query(default=5)
 ):
-    """
-    Run clustering on fetched movies and return all clusters.
-
-    Parameters:
-    - algorithm: kmeans or dbscan
-    - n_clusters: Number of clusters (None for auto with kmeans)
-    - auto_k: Auto-detect optimal K (kmeans only)
-    - include_movies: Include movie list in response
-    """
     if not state.movies:
         raise HTTPException(
             status_code=400,
@@ -360,11 +293,9 @@ async def run_clustering(
         )
 
     try:
-        # Preprocess data
         state.preprocessed_data = state.preprocessor.fit_transform(state.movies)
         summary = summarize_preprocessed_data(state.preprocessed_data)
 
-        # Run clustering
         if algorithm == ClusteringAlgorithm.KMEANS:
             result = state.clusterer.cluster_kmeans(
                 data=state.preprocessed_data,
@@ -380,7 +311,6 @@ async def run_clustering(
 
         state.clustering_result = result
 
-        # Build response
         clusters = [
             cluster_to_response(c.cluster_id, include_movies)
             for c in result.clusters
@@ -401,11 +331,6 @@ async def run_clustering(
 
 @app.post("/recluster")
 async def recluster(request: ClusterRequest):
-    """
-    Force re-clustering with new parameters.
-
-    Useful for experimenting with different configurations.
-    """
     if not state.preprocessed_data:
         raise HTTPException(
             status_code=400,
@@ -442,11 +367,6 @@ async def recluster(request: ClusterRequest):
 
 @app.get("/clusters")
 async def get_clusters(include_movies: bool = Query(default=False)):
-    """
-    Get cached clustering results.
-
-    Returns all clusters from the most recent clustering run.
-    """
     if not state.clustering_result:
         raise HTTPException(
             status_code=400,
@@ -470,7 +390,6 @@ async def get_cluster(
     cluster_id: int,
     include_movies: bool = Query(default=True)
 ):
-    """Get details for a specific cluster."""
     if not state.clustering_result:
         raise HTTPException(
             status_code=400,
@@ -485,19 +404,12 @@ async def get_recommendations(
     movie_id: int,
     limit: int = Query(default=10, ge=1, le=50)
 ):
-    """
-    Get movie recommendations from the same cluster.
-
-    Returns movies that are clustered with the given movie,
-    sorted by popularity.
-    """
     if not state.clustering_result:
         raise HTTPException(
             status_code=400,
             detail="No clustering results. Run clustering first."
         )
 
-    # Find the movie's cluster
     cluster_id = state.clusterer.get_cluster_for_movie(movie_id)
     if cluster_id is None:
         raise HTTPException(
@@ -505,7 +417,6 @@ async def get_recommendations(
             detail=f"Movie {movie_id} not found in any cluster"
         )
 
-    # Get similar movies
     similar = state.clusterer.get_similar_movies(movie_id, limit=limit)
 
     cluster_info = state.clustering_result.get_cluster(cluster_id)
@@ -525,7 +436,6 @@ async def get_recommendations(
 
 @app.get("/stats")
 async def get_stats():
-    """Get service statistics and data summary."""
     stats = {
         "movies_loaded": len(state.movies),
         "clustering_available": state.clustering_result is not None
@@ -549,7 +459,6 @@ async def get_stats():
 
 @app.delete("/cache")
 async def clear_cache():
-    """Clear all cached data and reset state."""
     if state.tmdb_service:
         files_cleared = state.tmdb_service.clear_cache()
     else:
@@ -564,11 +473,6 @@ async def clear_cache():
     }
 
 
-# ---------------------------------------------------------------------------
-# Filter Endpoints - Intersection of Genre, Language, Era
-# ---------------------------------------------------------------------------
-
-# Language code to name mapping
 LANGUAGE_NAMES = {
     "en": "English",
     "es": "Spanish",
@@ -609,7 +513,6 @@ LANGUAGE_NAMES = {
 
 
 def get_era_from_year(year: int) -> str:
-    """Determine era bucket from release year."""
     for era, (start, end) in ERA_BUCKETS.items():
         if start <= year <= end:
             return era
@@ -617,7 +520,6 @@ def get_era_from_year(year: int) -> str:
 
 
 def extract_year(release_date: str) -> Optional[int]:
-    """Extract year from TMDB release_date string."""
     if not release_date or len(release_date) < 4:
         return None
     try:
@@ -628,19 +530,12 @@ def extract_year(release_date: str) -> Optional[int]:
 
 @app.get("/filters/options", response_model=FilterOptionsResponse)
 async def get_filter_options():
-    """
-    Get available filter options for genres, languages, and eras.
-
-    Use this endpoint to populate filter dropdowns in the UI.
-    Returns all unique values from the loaded movie dataset.
-    """
     if not state.movies:
         raise HTTPException(
             status_code=400,
             detail="No movies loaded. Call POST /fetch-movies first."
         )
 
-    # Collect unique genres
     genre_ids = set()
     for movie in state.movies:
         genre_ids.update(movie.genre_ids)
@@ -650,14 +545,12 @@ async def get_filter_options():
         for gid in genre_ids
     ])
 
-    # Collect unique languages
     language_codes = set(m.original_language for m in state.movies if m.original_language)
     languages = sorted([
         {"code": code, "name": LANGUAGE_NAMES.get(code, code.upper())}
         for code in language_codes
     ], key=lambda x: x["name"])
 
-    # Era options with labels
     eras = [
         {"id": "Classic", "label": "Classic (before 1980)"},
         {"id": "Old", "label": "Old (1980-1999)"},
@@ -680,34 +573,18 @@ async def filter_movies(
     limit: int = Query(default=50, ge=1, le=200, description="Maximum results"),
     sort_by: str = Query(default="popularity", description="Sort by: popularity, vote_average, release_date")
 ):
-    """
-    Filter movies by intersection of genre, language, and era.
-
-    Returns movies that match ALL specified criteria (AND logic).
-    Omit a parameter to not filter by that criterion.
-
-    Examples:
-    - /filter?genre=Action&language=en&era=Modern
-      → English Action movies from 2000-2015
-    - /filter?genre=Drama&era=Recent
-      → Drama movies from 2016+ in any language
-    - /filter?language=ko
-      → All Korean movies
-    """
     if not state.movies:
         raise HTTPException(
             status_code=400,
             detail="No movies loaded. Call POST /fetch-movies first."
         )
 
-    # Validate era if provided
     if era and era not in ERA_BUCKETS:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid era. Must be one of: {', '.join(ERA_ORDER)}"
         )
 
-    # Find genre_id from genre name
     genre_id = None
     if genre:
         for gid, gname in state.genre_map.items():
@@ -720,18 +597,12 @@ async def filter_movies(
                 detail=f"Unknown genre: {genre}. Call GET /filters/options for valid genres."
             )
 
-    # Filter movies by intersection
     filtered = []
     for movie in state.movies:
-        # Check genre filter
         if genre_id is not None and genre_id not in movie.genre_ids:
             continue
-
-        # Check language filter
         if language and movie.original_language != language:
             continue
-
-        # Check era filter
         if era:
             year = extract_year(movie.release_date)
             if year is None:
@@ -742,7 +613,6 @@ async def filter_movies(
 
         filtered.append(movie)
 
-    # Sort results
     if sort_by == "popularity":
         filtered.sort(key=lambda m: -m.popularity)
     elif sort_by == "vote_average":
@@ -750,7 +620,6 @@ async def filter_movies(
     elif sort_by == "release_date":
         filtered.sort(key=lambda m: m.release_date or "", reverse=True)
 
-    # Apply limit
     filtered = filtered[:limit]
 
     return FilteredMoviesResponse(
@@ -770,15 +639,9 @@ async def filter_count(
     language: Optional[str] = Query(default=None),
     era: Optional[str] = Query(default=None)
 ):
-    """
-    Get count of movies matching the filter criteria.
-
-    Useful for showing "X movies found" in UI before loading full results.
-    """
     if not state.movies:
         return {"count": 0, "filters_applied": {"genre": genre, "language": language, "era": era}}
 
-    # Find genre_id from genre name
     genre_id = None
     if genre:
         for gid, gname in state.genre_map.items():
@@ -805,10 +668,6 @@ async def filter_count(
         "filters_applied": {"genre": genre, "language": language, "era": era}
     }
 
-
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn

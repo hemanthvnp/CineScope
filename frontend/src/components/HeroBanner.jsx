@@ -47,6 +47,7 @@ function HeroBanner() {
                 src={`https://image.tmdb.org/t/p/w500${imagePath}`}
                 alt={movie.title}
                 className="showcase-image"
+                onError={(e) => { e.currentTarget.parentElement.style.display = "none" }}
               />
               <div className="showcase-card-overlay">
                 <span>{movie.title}</span>

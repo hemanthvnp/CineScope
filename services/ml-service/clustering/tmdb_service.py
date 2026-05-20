@@ -19,7 +19,6 @@ from dataclasses import dataclass, asdict
 
 import requests
 
-# Configuration
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 BASE_URL = "https://api.themoviedb.org/3"
 CACHE_DIR = Path(__file__).parent / "cache"
@@ -29,7 +28,6 @@ API_RATE_LIMIT = 40
 
 @dataclass
 class Movie:
-    """Movie data structure matching TMDB response fields."""
     id: int
     title: str
     overview: str
@@ -46,24 +44,8 @@ class Movie:
 
 
 class TMDBService:
-    """
-    Service for fetching and caching TMDB movie data.
-
-    Features:
-    - Pagination support for bulk fetching
-    - Disk-based caching to avoid repeated API calls
-    - Automatic rate limiting with retry logic
-    - Genre mapping from IDs to names
-    """
 
     def __init__(self, api_key: str = None, cache_enabled: bool = True):
-        """
-        Initialize TMDB service.
-
-        Args:
-            api_key: TMDB API key (defaults to env variable)
-            cache_enabled: Whether to use disk caching
-        """
         self.api_key = api_key or TMDB_API_KEY
         if not self.api_key:
             raise ValueError("TMDB_API_KEY is required")
@@ -72,17 +54,14 @@ class TMDBService:
         self.session = requests.Session()
         self.genre_map: Dict[int, str] = {}
 
-        # Ensure cache directory exists
         if self.cache_enabled:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     def _get_cache_path(self, cache_key: str) -> Path:
-        """Generate cache file path from key."""
         key_hash = hashlib.md5(cache_key.encode()).hexdigest()
         return CACHE_DIR / f"{key_hash}.json"
 
     def _load_from_cache(self, cache_key: str) -> Optional[Dict]:
-        """Load data from disk cache if valid."""
         if not self.cache_enabled:
             return None
 
@@ -93,8 +72,6 @@ class TMDBService:
         try:
             with open(cache_path, "r", encoding="utf-8") as f:
                 cached = json.load(f)
-
-            # Check TTL
             if time.time() - cached.get("timestamp", 0) > CACHE_TTL:
                 cache_path.unlink(missing_ok=True)
                 return None
@@ -104,7 +81,6 @@ class TMDBService:
             return None
 
     def _save_to_cache(self, cache_key: str, data: Dict) -> None:
-        """Save data to disk cache."""
         if not self.cache_enabled:
             return
 
@@ -119,16 +95,6 @@ class TMDBService:
             print(f"[tmdb_service] Cache write failed: {e}")
 
     def _api_request(self, endpoint: str, params: Dict = None) -> Dict:
-        """
-        Make GET request to TMDB API with retry logic.
-
-        Args:
-            endpoint: API endpoint path
-            params: Query parameters
-
-        Returns:
-            JSON response as dict
-        """
         if params is None:
             params = {}
         params["api_key"] = self.api_key
@@ -150,12 +116,6 @@ class TMDBService:
                 time.sleep(sleep_time)
 
     def fetch_genre_list(self) -> Dict[int, str]:
-        """
-        Fetch genre ID to name mapping from TMDB.
-
-        Returns:
-            Dict mapping genre_id -> genre_name
-        """
         cache_key = "genre_list"
         cached = self._load_from_cache(cache_key)
         if cached:
@@ -175,35 +135,22 @@ class TMDBService:
         sort_by: str = "popularity.desc",
         languages: List[str] = None
     ) -> List[Movie]:
-        """
-        Fetch bulk movies from TMDB using pagination.
-
-        Args:
-            total_movies: Target number of movies (500-2000 recommended)
-            sort_by: TMDB sort criteria
-            languages: Filter by original_language codes (None = all)
-
-        Returns:
-            List of Movie objects
-        """
         cache_key = f"movies_{total_movies}_{sort_by}_{languages}"
         cached = self._load_from_cache(cache_key)
         if cached:
             print(f"[tmdb_service] Loaded {len(cached)} movies from cache")
             return [Movie(**m) for m in cached]
-
-        # Ensure genre map is loaded
         if not self.genre_map:
             self.fetch_genre_list()
 
         movies: List[Movie] = []
         seen_ids = set()
-        pages_per_batch = 20  # TMDB returns 20 results per page
+        pages_per_batch = 20 
         pages_needed = (total_movies // pages_per_batch) + 1
 
         print(f"[tmdb_service] Fetching ~{total_movies} movies ({pages_needed} pages)...")
 
-        for page in range(1, min(pages_needed + 1, 500)):  # TMDB max 500 pages
+        for page in range(1, min(pages_needed + 1, 500)):
             if len(movies) >= total_movies:
                 break
 
@@ -212,8 +159,6 @@ class TMDBService:
                 "page": page,
                 "vote_count.gte": 10  # Filter low-quality entries
             }
-
-            # Optionally filter by language
             if languages and len(languages) == 1:
                 params["with_original_language"] = languages[0]
 
@@ -225,8 +170,6 @@ class TMDBService:
                     movie_id = m["id"]
                     if movie_id in seen_ids:
                         continue
-
-                    # Filter by language if multiple specified
                     if languages and m.get("original_language") not in languages:
                         continue
 
@@ -243,12 +186,8 @@ class TMDBService:
                         popularity=m.get("popularity", 0),
                         poster_path=m.get("poster_path", "")
                     ))
-
-                # Progress logging
                 if page % 10 == 0:
                     print(f"[tmdb_service] Fetched {len(movies)} movies (page {page})...")
-
-                # Rate limiting: ~4 requests per second
                 time.sleep(0.25)
 
             except Exception as e:
@@ -256,30 +195,10 @@ class TMDBService:
                 continue
 
         print(f"[tmdb_service] Fetched {len(movies)} movies total")
-
-        # Cache results
         self._save_to_cache(cache_key, [m.to_dict() for m in movies])
         return movies
 
     def fetch_diverse_movies(self, total_movies: int = 1500) -> List[Movie]:
-        """
-        Fetch movies with diverse languages for better clustering.
-
-        Fetches from multiple language pools to ensure variety:
-        - English (en)
-        - Spanish (es)
-        - French (fr)
-        - Korean (ko)
-        - Japanese (ja)
-        - Hindi (hi)
-        - And more through general discovery
-
-        Args:
-            total_movies: Total target movies
-
-        Returns:
-            List of Movie objects with diverse languages
-        """
         cache_key = f"diverse_movies_{total_movies}"
         cached = self._load_from_cache(cache_key)
         if cached:
@@ -288,12 +207,12 @@ class TMDBService:
 
         language_targets = [
             ("es", 0.10),
-            ("fr", 0.08),   # French: 8%
-            ("ko", 0.10),   # Korean: 10%
-            ("ja", 0.10),   # Japanese: 10%
-            ("hi", 0.08),   # Hindi: 8%
-            ("zh", 0.05),   # Chinese: 5%
-            ("de", 0.04),   # German: 4%
+            ("fr", 0.08),
+            ("ko", 0.10),
+            ("ja", 0.10),
+            ("hi", 0.08),
+            ("zh", 0.05),
+            ("de", 0.04),
             (None, 0.06),
         ]
 
@@ -313,23 +232,18 @@ class TMDBService:
                     all_movies.append(m)
 
         print(f"[tmdb_service] Fetched {len(all_movies)} diverse movies")
-
-        # Cache results
         self._save_to_cache(cache_key, [m.to_dict() for m in all_movies])
         return all_movies
 
     def get_genre_name(self, genre_id: int) -> str:
-        """Get genre name from ID."""
         if not self.genre_map:
             self.fetch_genre_list()
         return self.genre_map.get(genre_id, "Unknown")
 
     def get_genre_names(self, genre_ids: List[int]) -> List[str]:
-        """Get multiple genre names from IDs."""
         return [self.get_genre_name(gid) for gid in genre_ids]
 
     def clear_cache(self) -> int:
-        """Clear all cached data. Returns number of files deleted."""
         if not CACHE_DIR.exists():
             return 0
 
@@ -342,7 +256,6 @@ class TMDBService:
         return count
 
     def get_cache_stats(self) -> Dict:
-        """Get cache statistics."""
         if not CACHE_DIR.exists():
             return {"files": 0, "size_kb": 0}
 

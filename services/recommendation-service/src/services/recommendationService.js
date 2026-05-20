@@ -8,22 +8,7 @@ const logger = require("../utils/logger")
 const MIN_ACCEPTABLE_VOTE_AVG = Number(process.env.MIN_ACCEPTABLE_VOTE_AVG || 6.0)
 const MIN_ACCEPTABLE_VOTE_COUNT = Number(process.env.MIN_ACCEPTABLE_VOTE_COUNT || 80)
 
-/**
- * Recommendation Service
- *
- * Genre-based movie recommendations powered by TMDB.
- * Movies are fetched live from TMDB rather than stored locally.
- *
- * Algorithm:
- * 1. Fetch user's genre preferences (genre_id -> score mapping)
- * 2. Discover movies on TMDB by the user's preferred genres
- * 3. Score movies based on genre preference match
- * 4. Return top N movies with full TMDB data
- */
 
-/**
- * Get user's genre preferences as a map
- */
 const getUserGenrePreferences = async (userId) => {
   const startTime = Date.now()
 
@@ -41,9 +26,7 @@ const getUserGenrePreferences = async (userId) => {
   return preferenceMap
 }
 
-/**
- * Build a genre_id -> genre_name map
- */
+
 const getGenreNameMap = async () => {
   const genres = await Genre.find({}).select("genre_id genre_name -_id").lean()
   const map = new Map()
@@ -53,9 +36,7 @@ const getGenreNameMap = async () => {
   return map
 }
 
-/**
- * Get movie IDs that should be excluded from recommendations
- */
+
 const getExcludedMovieIds = async (userId, options = {}) => {
   const { excludeWatched = true, excludeRated = true } = options
 
@@ -75,9 +56,7 @@ const getExcludedMovieIds = async (userId, options = {}) => {
   return new Set(watchlist.map(item => item.movie_id))
 }
 
-/**
- * Calculate recommendation score for a movie based on user's genre preferences
- */
+
 const calculateMovieScore = (movieGenreIds, userPreferences) => {
   if (!movieGenreIds || movieGenreIds.length === 0) {
     return 0
@@ -93,10 +72,7 @@ const calculateMovieScore = (movieGenreIds, userPreferences) => {
   return score
 }
 
-/**
- * Calculate strict intersection strength for genre preferences.
- * Higher values mean the movie matches more of the user's chosen genres.
- */
+
 const calculateGenreIntersection = (movieGenreIds, userPreferences) => {
   if (!movieGenreIds || movieGenreIds.length === 0 || userPreferences.size === 0) {
     return {
@@ -138,11 +114,7 @@ const passesQualityFloor = (movie) => {
   return voteAverage >= MIN_ACCEPTABLE_VOTE_AVG && voteCount >= MIN_ACCEPTABLE_VOTE_COUNT
 }
 
-/**
- * Get genre-based movie recommendations for a user.
- * Fetches candidate movies directly from TMDB by preferred genres,
- * scores them, and returns enriched movie data.
- */
+
 const getGenreBasedRecommendations = async (userId, options = {}) => {
   const startTime = Date.now()
   const {
@@ -154,7 +126,6 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
 
   logger.info("Generating recommendations", { userId, options })
 
-  // Step 1: Get user's genre preferences
   const userPreferences = await getUserGenrePreferences(userId)
   const genreNameMap = await getGenreNameMap()
 
@@ -172,19 +143,15 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
     }
   }
 
-  // Step 2: Get movies to exclude
   const excludedMovieIds = await getExcludedMovieIds(userId, {
     excludeWatched,
     excludeRated
   })
 
-  // Step 3: Fetch candidate movies from TMDB by preferred genres
   const preferredGenreIds = Array.from(userPreferences.keys())
-  // Sort genres by preference score (descending) to prioritize top genres
   preferredGenreIds.sort((a, b) => userPreferences.get(b) - userPreferences.get(a))
 
-  // Fetch movies from TMDB for each preferred genre
-  const candidateMap = new Map() // movie_id -> { movie, genreIds }
+  const candidateMap = new Map()
 
   for (const genreId of preferredGenreIds.slice(0, 5)) { // Top 5 genres
     try {
@@ -202,8 +169,6 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
       logger.warn("Failed to fetch genre movies from TMDB", { genreId, error: error.message })
     }
   }
-
-  // Also add some popular movies for diversity
   try {
     const popularMovies = await tmdbClient.fetchPopularMovies(2)
     for (const movie of popularMovies) {
@@ -219,7 +184,6 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
     logger.warn("Failed to fetch popular movies from TMDB", { error: error.message })
   }
 
-  // Step 4: Calculate scores for each candidate
   const movieScores = []
   for (const [movieId, { movie, genreIds }] of candidateMap) {
     const score = calculateMovieScore(genreIds, userPreferences)
@@ -253,7 +217,6 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
     }
   }
 
-  // Step 5: Sort by strict intersection first, then score
   movieScores.sort((a, b) => {
     if (b.matchedPreferenceCount !== a.matchedPreferenceCount) {
       return b.matchedPreferenceCount - a.matchedPreferenceCount
@@ -268,15 +231,13 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
     return (b.movie.popularity || 0) - (a.movie.popularity || 0)
   })
 
-  // Step 6: Return paginated results with full movie data from TMDB
   const recommendations = movieScores
     .slice(offset, offset + limit)
     .map(item => {
-      // Get actual genre names for the explanation
       const matchingGenreNames = item.genreIds
         .filter(genreId => userPreferences.has(genreId))
         .map(genreId => genreNameMap.get(genreId) || `Genre ${genreId}`)
-        .slice(0, 3); // Limit to top 3 genres for readability
+        .slice(0, 3);
 
       return {
         movie_id: item.movie_id,
@@ -290,10 +251,8 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
         language: item.movie.original_language || "en",
         genre_ids: item.movie.genre_ids || [],
         score: item.score,
-        recommendation_score: item.score,
         matching_genres: item.matchedPreferenceCount,
         matching_genre_names: matchingGenreNames,
-        matched_preferences: item.matchedPreferenceCount,
         total_preferences: item.totalPreferenceCount,
         is_full_intersection: item.isFullIntersection,
         quality_score: Number(item.qualityScore.toFixed(4)),
@@ -335,9 +294,7 @@ const getGenreBasedRecommendations = async (userId, options = {}) => {
   }
 }
 
-/**
- * Update user's genre preference
- */
+
 const updateUserPreference = async (userId, genreId, score) => {
   const preference = await UserPreference.findOneAndUpdate(
     {
@@ -345,10 +302,7 @@ const updateUserPreference = async (userId, genreId, score) => {
       genre_id: genreId
     },
     {
-      $set: {
-        score,
-        updated_at: new Date()
-      },
+      $set: { score },
       $setOnInsert: {
         user_id: new mongoose.Types.ObjectId(userId),
         genre_id: genreId
@@ -365,9 +319,7 @@ const updateUserPreference = async (userId, genreId, score) => {
   return preference
 }
 
-/**
- * Set multiple genre preferences at once
- */
+
 const setUserPreferences = async (userId, preferences) => {
   const bulkOps = preferences.map(pref => ({
     updateOne: {
@@ -398,9 +350,7 @@ const setUserPreferences = async (userId, preferences) => {
   }
 }
 
-/**
- * Get user's current preferences
- */
+
 const getUserPreferences = async (userId) => {
   const preferences = await UserPreference.aggregate([
     {
@@ -433,16 +383,12 @@ const getUserPreferences = async (userId) => {
   return preferences
 }
 
-/**
- * Get all available genres
- */
+
 const getAllGenres = async () => {
   return Genre.find({}).sort({ genre_name: 1 }).lean()
 }
 
-/**
- * Add movie to user's watchlist
- */
+
 const addToWatchlist = async (userId, movieId, status = "watchlist", rating = null) => {
   const numericMovieId = Number(movieId)
   if (!Number.isFinite(numericMovieId)) {
@@ -476,9 +422,7 @@ const addToWatchlist = async (userId, movieId, status = "watchlist", rating = nu
   return entry
 }
 
-/**
- * Get user's watchlist items enriched with TMDB movie details
- */
+
 const getUserWatchlist = async (userId, options = {}) => {
   const { limit = 100, offset = 0, status } = options
   const query = {
@@ -489,11 +433,14 @@ const getUserWatchlist = async (userId, options = {}) => {
     query.status = status
   }
 
-  const watchlistEntries = await UserWatchlist.find(query)
-    .sort({ updatedAt: -1 })
-    .skip(offset)
-    .limit(limit)
-    .lean()
+  const [watchlistEntries, totalCount] = await Promise.all([
+    UserWatchlist.find(query)
+      .sort({ updatedAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .lean(),
+    UserWatchlist.countDocuments(query)
+  ])
 
   const movieIds = watchlistEntries.map(entry => entry.movie_id)
   const movieMap = await tmdbClient.fetchMoviesByIds(movieIds)
@@ -522,16 +469,15 @@ const getUserWatchlist = async (userId, options = {}) => {
     success: true,
     watchlist: items,
     meta: {
-      total: items.length,
+      total: totalCount,
+      returned: items.length,
       limit,
       offset
     }
   }
 }
 
-/**
- * Remove a movie from user's watchlist
- */
+
 const removeFromWatchlist = async (userId, movieId) => {
   const numericMovieId = Number(movieId)
   if (!Number.isFinite(numericMovieId)) {
@@ -552,15 +498,11 @@ const removeFromWatchlist = async (userId, movieId) => {
 
 module.exports = {
   getGenreBasedRecommendations,
-  getUserGenrePreferences,
   updateUserPreference,
   setUserPreferences,
   getUserPreferences,
   getAllGenres,
   addToWatchlist,
   getUserWatchlist,
-  removeFromWatchlist,
-  getExcludedMovieIds,
-  calculateMovieScore,
-  calculateGenreIntersection
+  removeFromWatchlist
 }

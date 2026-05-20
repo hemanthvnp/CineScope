@@ -1,20 +1,10 @@
-/**
- * Database Seed Script for Recommendation Service
- * Seeds TMDB genre IDs into the local genres collection.
- * Movies are no longer stored locally — they are fetched from TMDB at runtime.
- *
- * Usage: npm run seed
- */
-
 require("dotenv").config()
 const mongoose = require("mongoose")
 const dns = require("node:dns")
 const Genre = require("../models/Genre")
 
-// Use public DNS servers to resolve MongoDB Atlas SRV records
 dns.setServers(["1.1.1.1", "8.8.8.8"])
 
-// TMDB genre IDs (standard across TMDB API)
 const TMDB_GENRES = [
   { genre_id: 28, genre_name: "Action" },
   { genre_id: 12, genre_name: "Adventure" },
@@ -37,9 +27,6 @@ const TMDB_GENRES = [
   { genre_id: 37, genre_name: "Western" }
 ]
 
-/**
- * Seed genres into the database
- */
 const seedGenres = async () => {
   console.log("[recommendation-service] Seeding genres...")
 
@@ -54,9 +41,7 @@ const seedGenres = async () => {
   console.log(`[recommendation-service] Seeded ${TMDB_GENRES.length} genres`)
 }
 
-/**
- * Main seed function
- */
+
 const seed = async () => {
   try {
     const uriCandidates = [

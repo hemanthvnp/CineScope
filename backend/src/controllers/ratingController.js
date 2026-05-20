@@ -35,10 +35,9 @@ const submitRating = async (req, res) => {
       console.warn("Failed to sync rating to recommendation service:", syncError.message)
     }
 
-    try {
-      axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch(() => {})
-    } catch (refreshError) {
-    }
+    axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch((err) => {
+      console.warn("ML model refresh failed (non-fatal):", err.message)
+    })
 
     return res.status(200).json({
       message: "Rating submitted successfully.",

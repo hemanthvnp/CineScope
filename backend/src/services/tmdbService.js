@@ -84,12 +84,14 @@ const getMovieDetails = async (movieId) => {
   return data
 }
 
-const searchMovies = async (query, page = 1) => {
-  const response = await fetchWithRetry("/search/movie", {
+const searchMovies = async (query, page = 1, year = null) => {
+  const params = {
     api_key: process.env.TMDB_API_KEY,
     query,
     page
-  })
+  }
+  if (year) params.year = year
+  const response = await fetchWithRetry("/search/movie", params)
   return response.data
 }
 

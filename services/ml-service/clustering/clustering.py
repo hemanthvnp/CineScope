@@ -13,7 +13,6 @@ from .tmdb_service import Movie
 
 @dataclass
 class ClusterInfo:
-    """Information about a single cluster."""
     cluster_id: int
     size: int
     dominant_language: str
@@ -41,7 +40,6 @@ class ClusterInfo:
 
 @dataclass
 class ClusteringResult:
-    """Complete clustering result with all clusters and metadata."""
     algorithm: str
     n_clusters: int
     clusters: List[ClusterInfo]
@@ -50,14 +48,12 @@ class ClusteringResult:
     movies_by_cluster: Dict[int, List[Movie]] = field(default_factory=dict)
 
     def get_cluster(self, cluster_id: int) -> Optional[ClusterInfo]:
-        """Get cluster info by ID."""
         for c in self.clusters:
             if c.cluster_id == cluster_id:
                 return c
         return None
 
     def get_movies_in_cluster(self, cluster_id: int) -> List[Movie]:
-        """Get all movies in a specific cluster."""
         return self.movies_by_cluster.get(cluster_id, [])
 
     def to_dict(self, include_movies: bool = False) -> Dict:
@@ -82,13 +78,11 @@ class MovieClusterer:
         self.scale_features = scale_features
         self.scaler = StandardScaler() if scale_features else None
 
-        # State
         self._preprocessed_data: Optional[PreprocessedData] = None
         self._scaled_features: Optional[np.ndarray] = None
         self._current_result: Optional[ClusteringResult] = None
 
     def _prepare_features(self, data: PreprocessedData) -> np.ndarray:
-        """Scale features if enabled."""
         self._preprocessed_data = data
 
         if self.scale_features:
@@ -184,15 +178,13 @@ class MovieClusterer:
     ) -> ClusteringResult:
         features = self._prepare_features(data)
 
-        # Determine K
         if n_clusters is None and auto_k:
             n_clusters, k_analysis = self.find_optimal_k(data, method="silhouette")
         elif n_clusters is None:
-            n_clusters = 8  # Default
+            n_clusters = 8
 
         print(f"[clustering] Running KMeans with K={n_clusters}...")
 
-        # Fit KMeans
         kmeans = KMeans(
             n_clusters=n_clusters,
             random_state=self.random_state,
@@ -201,10 +193,8 @@ class MovieClusterer:
         )
         labels = kmeans.fit_predict(features)
 
-        # Calculate metrics
         silhouette = silhouette_score(features, labels) if n_clusters > 1 else 0
 
-        # Build result
         result = self._build_result(
             data=data,
             labels=labels,
@@ -232,11 +222,9 @@ class MovieClusterer:
         dbscan = DBSCAN(eps=eps, min_samples=min_samples)
         labels = dbscan.fit_predict(features)
 
-        # Count clusters (excluding noise label -1)
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         n_noise = np.sum(labels == -1)
 
-        # Calculate silhouette (only if we have valid clusters)
         silhouette = 0
         if n_clusters > 1:
             # Exclude noise points for silhouette calculation
@@ -268,11 +256,9 @@ class MovieClusterer:
         algorithm: str,
         metrics: Dict
     ) -> ClusteringResult:
-        """Build clustering result with cluster interpretation."""
         df = data.df.copy()
         df["cluster"] = labels
 
-        # Group movies by cluster
         unique_labels = sorted(set(labels))
         if -1 in unique_labels:
             unique_labels.remove(-1)  # Exclude DBSCAN noise
@@ -309,24 +295,19 @@ class MovieClusterer:
         cluster_df,
         genre_map: Dict[int, str]
     ) -> ClusterInfo:
-        """Analyze and interpret cluster characteristics."""
-        # Language analysis
         lang_counts = Counter(cluster_df["language_group"])
         dominant_language = lang_counts.most_common(1)[0][0] if lang_counts else "unknown"
 
-        # Genre analysis
         genre_counts: Dict[str, int] = {}
         for genre_ids in cluster_df["genre_ids"]:
             for gid in genre_ids:
                 name = genre_map.get(gid, str(gid))
                 genre_counts[name] = genre_counts.get(name, 0) + 1
 
-        # Normalize genre scores
         total_movies = len(cluster_df)
         genre_scores = {k: v / total_movies for k, v in genre_counts.items()}
         top_genres = sorted(genre_scores.keys(), key=lambda x: -genre_scores[x])[:5]
 
-        # Era analysis
         era_counts = Counter(cluster_df["era"])
         dominant_era = era_counts.most_common(1)[0][0] if era_counts else "Unknown"
 
@@ -355,16 +336,13 @@ class MovieClusterer:
         for cluster_id, movies in result.movies_by_cluster.items():
             movie_ids = [m.id for m in movies]
             if movie_id in movie_ids:
-                # Return other movies from same cluster
                 similar = [m for m in movies if m.id != movie_id]
-                # Sort by popularity
                 similar.sort(key=lambda m: -m.popularity)
                 return similar[:limit]
 
         return []
 
     def get_cluster_for_movie(self, movie_id: int) -> Optional[int]:
-        """Get cluster ID for a specific movie."""
         if self._current_result is None:
             return None
 
@@ -372,18 +350,3 @@ class MovieClusterer:
             if movie_id in [m.id for m in movies]:
                 return cluster_id
         return None
-
-
-def auto_cluster(
-    data: PreprocessedData,
-    algorithm: str = "kmeans",
-    **kwargs
-) -> ClusteringResult:
-    clusterer = MovieClusterer()
-
-    if algorithm == "kmeans":
-        return clusterer.cluster_kmeans(data, **kwargs)
-    elif algorithm == "dbscan":
-        return clusterer.cluster_dbscan(data, **kwargs)
-    else:
-        raise ValueError(f"Unknown algorithm: {algorithm}")

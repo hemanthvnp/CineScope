@@ -27,16 +27,12 @@ function Home() {
   const [loadingUpcoming, setLoadingUpcoming] = useState(true)
   const [loadingLanguage, setLoadingLanguage] = useState(false)
 
-  // Use global search/filter metadata maps (for labels)
   const { languageMap } = useSearchFilter()
-  
   const observerRef = useRef(null)
 
-  /* ------------------ scroll animation ------------------ */
   const observeNodes = useCallback(() => {
     if (observerRef.current) observerRef.current.disconnect()
-    
-    observerRef.current = new IntersectionObserver( entries => {
+    observerRef.current = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.classList.add("visible")
@@ -45,8 +41,8 @@ function Home() {
       })
     }, { threshold: 0.1, rootMargin: "50px" })
 
-    const nodes = document.querySelectorAll(".reveal-on-scroll:not(.visible)")
-    nodes.forEach(node => observerRef.current.observe(node))
+    document.querySelectorAll(".reveal-on-scroll:not(.visible)")
+      .forEach(node => observerRef.current.observe(node))
   }, [])
 
   useEffect(() => {
@@ -54,13 +50,12 @@ function Home() {
     return () => observerRef.current?.disconnect()
   }, [observeNodes, hybridRecs, trendingMovies, nowPlaying, upcoming, languageMovies])
 
-  /* ------------------ profile fetch ------------------ */
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const response = await api.get("/users/me")
         const user = response.data.user
-        if (user && !user.id && user._id) { user.id = user._id }
+        if (user && !user.id && user._id) user.id = user._id
         setProfile(user)
       } catch {
         try {
@@ -68,15 +63,17 @@ function Home() {
           if (token) {
             const payload = JSON.parse(atob(token.split(".")[1]))
             setProfile({ id: payload.userId, name: "User" })
-          } else { setProfile(null) }
-        } catch { setProfile(null) }
+          } else {
+            setProfile(null)
+          }
+        } catch {
+          setProfile(null)
+        }
       }
     }
     fetchProfile()
   }, [])
 
-  /* ------------------ recommendation fetches ------------------ */
-  // Fetch hybrid recommendations
   useEffect(() => {
     if (!profile?.id) return
 
@@ -86,15 +83,17 @@ function Home() {
         const data = await getHybridRecommendations(profile.id, 60)
         const recs = data.recommendations || []
 
-        // "Because You Liked..." - Pure content similarity (liked movies)
         const contentRecs = recs.filter(r => r.explanation?.type === "content_similarity")
         setBecauseYouLiked(contentRecs.slice(0, 20))
 
-        // "Recommended For You" - Profile matches, community trends, and language discovery
         const matchRecs = recs.filter(r => r.explanation?.type !== "content_similarity")
         setHybridRecs(matchRecs.slice(0, 20))
 
-        const genreBasedRecs = recs.filter(r => r.explanation?.type === "genre_match")
+        // Deduplicate genreRecs — exclude movies already shown in hybridRecs
+        const shownIds = new Set(matchRecs.slice(0, 20).map(r => r.movie_id || r.id))
+        const genreBasedRecs = recs.filter(
+          r => r.explanation?.type === "genre_match" && !shownIds.has(r.movie_id || r.id)
+        )
         setGenreRecs(genreBasedRecs.slice(0, 15))
       } catch (error) {
         console.error("Failed to fetch recommendations:", error)
@@ -109,7 +108,6 @@ function Home() {
     fetchRecommendations()
   }, [profile?.id])
 
-  // Fetch standard TMDB rows (Trending, Now Playing, Upcoming)
   useEffect(() => {
     const fetchStandardRows = async () => {
       setLoadingTrending(true)
@@ -140,7 +138,6 @@ function Home() {
     fetchStandardRows()
   }, [])
 
-  /* ------------------ language preferences (Based on Profile ONLY) ------------------ */
   useEffect(() => {
     const preferredLang = profile?.preferredLanguage
     if (!preferredLang || preferredLang === "en") {
@@ -153,15 +150,20 @@ function Home() {
         const data = await getMoviesByLanguage(preferredLang, "popular")
         const langName = languageMap[preferredLang] || preferredLang.toUpperCase()
         setLanguageMovies((data.movies || []).slice(0, 20).map(m => ({
-          ...m, movie_id: m.movie_id || m.id, explanation: { reason: `Popular in ${langName}`, type: "language_preference" }
+          ...m,
+          movie_id: m.movie_id || m.id,
+          explanation: { reason: `Popular in ${langName}`, type: "language_preference" }
         })))
       } catch { setLanguageMovies([]) } finally { setLoadingLanguage(false) }
     }
     fetchLanguageMovies()
   }, [profile?.preferredLanguage, languageMap])
 
-  const nickname = (profile?.screenName || profile?.name || "Cinephile").replace(/^@/, "").replace(/\s+/g, "")
-  const signatureLine = profile?.signatureLine?.trim() || "Start by rating a film you love and we'll shape your next perfect watch."
+  const nickname = (profile?.screenName || profile?.name || "Cinephile")
+    .replace(/^@/, "")
+    .replace(/\s+/g, "")
+  const signatureLine = profile?.signatureLine?.trim() ||
+    "Start by rating a film you love and we'll shape your next perfect watch."
 
   return (
     <div>
@@ -170,9 +172,9 @@ function Home() {
         <h1>Hi {nickname}, start with your vibe.</h1>
         <p className="home-welcome-signature">"{signatureLine}"</p>
       </section>
+
       <div className="reveal-on-scroll"><HeroBanner /></div>
 
-      {/* ✨ Recommended For You */}
       {(hybridRecs.length > 0 || loadingHybrid) && (
         <div className="reveal-on-scroll">
           <RecommendationRow
@@ -185,7 +187,6 @@ function Home() {
         </div>
       )}
 
-      {/* ❤️ Because You Liked... */}
       {(becauseYouLiked.length > 0 || loadingHybrid) && (
         <div className="reveal-on-scroll">
           <RecommendationRow
@@ -197,7 +198,6 @@ function Home() {
         </div>
       )}
 
-      {/* 🎬 Now Playing - Pure TMDB */}
       {(nowPlaying.length > 0 || loadingNowPlaying) && (
         <div className="reveal-on-scroll">
           <RecommendationRow
@@ -212,26 +212,45 @@ function Home() {
 
       {(languageMovies.length > 0 || loadingLanguage) && profile?.preferredLanguage && (
         <div className="reveal-on-scroll">
-          <RecommendationRow title={`🌐 Popular in ${languageMap[profile.preferredLanguage] || profile.preferredLanguage.toUpperCase()}`} movies={languageMovies} loading={loadingLanguage} showExplanation={false} />
+          <RecommendationRow
+            title={`🌐 Popular in ${languageMap[profile.preferredLanguage] || profile.preferredLanguage.toUpperCase()}`}
+            movies={languageMovies}
+            loading={loadingLanguage}
+            showExplanation={false}
+          />
         </div>
       )}
 
       {(trendingMovies.length > 0 || loadingTrending) && (
         <div className="reveal-on-scroll">
-          <RecommendationRow title="🔥 Trending This Week" movies={trendingMovies} loading={loadingTrending} showExplanation={false} />
+          <RecommendationRow
+            title="🔥 Trending This Week"
+            movies={trendingMovies}
+            loading={loadingTrending}
+            showExplanation={false}
+          />
         </div>
       )}
 
-      {/* 🎭 Based on Your Favorite Genres */}
       {genreRecs.length > 0 && (
         <div className="reveal-on-scroll">
-          <RecommendationRow title="🎭 Based on Your Favorite Genres" movies={genreRecs} loading={false} showExplanation={true} />
+          <RecommendationRow
+            title="🎭 Based on Your Favorite Genres"
+            movies={genreRecs}
+            loading={false}
+            showExplanation={true}
+          />
         </div>
       )}
 
       {(upcoming.length > 0 || loadingUpcoming) && (
         <div className="reveal-on-scroll">
-          <RecommendationRow title="🍿 Coming Soon" movies={upcoming} loading={loadingUpcoming} showExplanation={false} />
+          <RecommendationRow
+            title="🍿 Coming Soon"
+            movies={upcoming}
+            loading={loadingUpcoming}
+            showExplanation={false}
+          />
         </div>
       )}
     </div>

@@ -1,11 +1,8 @@
-/**
- * Database Configuration for Recommendation Service
- */
+
 
 const mongoose = require("mongoose")
 const dns = require("node:dns")
 
-// Use public DNS servers to resolve MongoDB Atlas SRV records
 dns.setServers(["1.1.1.1", "8.8.8.8"])
 
 const RETRY_DELAY_MS = 10000

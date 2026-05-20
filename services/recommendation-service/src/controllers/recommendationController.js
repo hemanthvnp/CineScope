@@ -3,15 +3,7 @@ const { validateUserId, sanitizeRecommendationOptions, validateScore, validateGe
 const logger = require("../utils/logger")
 const { isMongoConnected } = require("../config/db")
 
-/**
- * Recommendation Controller
- * Handles HTTP requests for the recommendation API
- */
 
-/**
- * GET /recommendations/:userId
- * Get personalized movie recommendations for a user based on genre preferences
- */
 const getRecommendations = async (req, res) => {
   try {
     logger.request(req, "getRecommendations")
@@ -42,10 +34,7 @@ const getRecommendations = async (req, res) => {
   }
 }
 
-/**
- * GET /recommendations/:userId/preferences
- * Get user's current genre preferences
- */
+
 const getUserPreferences = async (req, res) => {
   try {
     logger.request(req, "getUserPreferences")
@@ -78,10 +67,7 @@ const getUserPreferences = async (req, res) => {
   }
 }
 
-/**
- * PUT /recommendations/:userId/preferences
- * Update user's genre preferences (bulk update)
- */
+
 const updateUserPreferences = async (req, res) => {
   try {
     logger.request(req, "updateUserPreferences")
@@ -148,10 +134,7 @@ const updateUserPreferences = async (req, res) => {
   }
 }
 
-/**
- * PATCH /recommendations/:userId/preferences/:genreId
- * Update a single genre preference
- */
+
 const updateSinglePreference = async (req, res) => {
   try {
     logger.request(req, "updateSinglePreference")
@@ -206,10 +189,7 @@ const updateSinglePreference = async (req, res) => {
   }
 }
 
-/**
- * GET /recommendations/genres
- * Get all available genres
- */
+
 const getAllGenres = async (req, res) => {
   try {
     logger.request(req, "getAllGenres")
@@ -230,10 +210,7 @@ const getAllGenres = async (req, res) => {
   }
 }
 
-/**
- * POST /recommendations/:userId/watchlist
- * Add a movie to user's watchlist
- */
+
 const addToWatchlist = async (req, res) => {
   try {
     logger.request(req, "addToWatchlist")
@@ -299,10 +276,7 @@ const addToWatchlist = async (req, res) => {
   }
 }
 
-/**
- * GET /recommendations/:userId/watchlist
- * Get a user's watchlist items
- */
+
 const getWatchlist = async (req, res) => {
   try {
     logger.request(req, "getWatchlist")
@@ -343,10 +317,7 @@ const getWatchlist = async (req, res) => {
   }
 }
 
-/**
- * DELETE /recommendations/:userId/watchlist/:movieId
- * Remove a movie from user's watchlist
- */
+
 const removeFromWatchlist = async (req, res) => {
   try {
     logger.request(req, "removeFromWatchlist")

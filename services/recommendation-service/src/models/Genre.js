@@ -1,9 +1,6 @@
 const mongoose = require("mongoose")
 
-/**
- * Genre Schema
- * Stores genre information (aligned with TMDB genre IDs)
- */
+
 const genreSchema = new mongoose.Schema({
   genre_id: {
     type: Number,

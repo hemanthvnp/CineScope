@@ -11,6 +11,7 @@ import LikedMovies from "./pages/LikedMovies"
 import Profile from "./pages/Profile"
 import MovieDetails from "./pages/MovieDetails"
 import SearchPage from "./pages/SearchPage"
+import QueryLab from "./pages/QueryLab"
 
 const AUTH_STORAGE_KEY = "cinescope-auth"
 const TOKEN_STORAGE_KEY = "cinescope-token"
@@ -56,6 +57,7 @@ function App() {
               <Route path="/liked" element={<ProtectedRoute><LikedMovies /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/movie/:id" element={<ProtectedRoute><MovieDetails /></ProtectedRoute>} />
+              <Route path="/query" element={<ProtectedRoute><QueryLab /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

@@ -51,31 +51,39 @@ const getTopRated = async (req, res) => {
 
 const searchMovies = async (req, res) => {
   try {
-    const { 
-      query, year, genre, language, 
-      sort_by, release_date_gte, release_date_lte 
+    const {
+      query, year, genre, language,
+      sort_by, release_date_gte, release_date_lte
     } = req.query
     const page = parseInt(req.query.page) || 1
 
-    if (query) {
-      const data = await tmdbService.searchMovies(query, page)
-      return res.json(data)
+    // No text query — use discover for pure filter browsing
+    if (!query) {
+      if (year || genre || language || release_date_gte || release_date_lte) {
+        const data = await tmdbService.discoverMovies({
+          page, year, with_genres: genre, language,
+          sort_by, release_date_gte, release_date_lte
+        })
+        return res.json(data)
+      }
+      return res.status(400).json({ message: "Search query or filters are required" })
     }
 
-    if (year || genre || language || release_date_gte || release_date_lte) {
-      const data = await tmdbService.discoverMovies({ 
-        page, 
-        year, 
-        with_genres: genre,
-        language,
-        sort_by,
-        release_date_gte,
-        release_date_lte
-      })
-      return res.json(data)
+    // Text query present — TMDB search, then apply genre/language filters to results
+    const data = await tmdbService.searchMovies(query, page, year)
+    let results = data.results || []
+
+    if (genre) {
+      const genreId = parseInt(genre)
+      if (!isNaN(genreId)) {
+        results = results.filter(m => (m.genre_ids || []).includes(genreId))
+      }
+    }
+    if (language) {
+      results = results.filter(m => m.original_language === language)
     }
 
-    res.status(400).json({ message: "Search query or filters are required" })
+    return res.json({ ...data, results })
   } catch (error) {
     console.error("Search error:", error)
     res.status(500).json({ message: "Failed to search movies" })

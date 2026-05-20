@@ -1,4 +1,4 @@
-
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -11,7 +11,11 @@ _index_movie_id = {}
 _is_built = False
 
 
-def build_tfidf_model(movies, movie_genre_map, genre_names):
+def build_tfidf_model(
+    movies: List[Dict],
+    movie_genre_map: Dict[int, List[int]],
+    genre_names: Dict[int, str],
+) -> None:
     global _tfidf_matrix, _vectorizer, _movie_id_index, _index_movie_id, _is_built
 
     documents = []
@@ -55,7 +59,13 @@ def build_tfidf_model(movies, movie_genre_map, genre_names):
           f"{_tfidf_matrix.shape[1]} features")
 
 
-def get_content_scores(user_rated_movies, exclude_ids=None, limit=50, user_profile=None, movies_lookup=None):
+def get_content_scores(
+    user_rated_movies: Dict[int, float],
+    exclude_ids: Optional[Set[int]] = None,
+    limit: int = 50,
+    user_profile: Optional[Dict] = None,
+    movies_lookup: Optional[Dict[int, Dict]] = None,
+) -> List[Tuple[int, float, int]]:
     if not _is_built or not user_rated_movies:
         return []
 
@@ -164,5 +174,5 @@ def get_content_scores(user_rated_movies, exclude_ids=None, limit=50, user_profi
     return results[:limit]
 
 
-def is_model_built():
+def is_model_built() -> bool:
     return _is_built

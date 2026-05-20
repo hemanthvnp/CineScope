@@ -5,7 +5,6 @@ const axios = require("axios")
 const movieRoutes = require("./routes/movieRoutes")
 const userRoutes = require("./routes/userRoutes")
 const ratingRoutes = require("./routes/ratingRoutes")
-const watchlistRoutes = require("./routes/watchlistRoutes")
 
 const app = express()
 
@@ -13,17 +12,50 @@ const app = express()
 const normalizeUrl = (url) => url ? url.replace(/\/+$/, "") : ""
 const RECOMMENDATION_SERVICE_URL = normalizeUrl(process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001")
 const ML_SERVICE_URL = normalizeUrl(process.env.ML_SERVICE_URL || "http://localhost:8000")
+const AI_ORCHESTRATION_URL = normalizeUrl(process.env.AI_ORCHESTRATION_URL || "http://localhost:9000")
 
 app.use(cors())
 app.use(express.json())
 
-// API Routes - Direct
+// Direct routes
 app.use("/api/movies", movieRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/ratings", ratingRoutes)
-app.use("/api/watchlist", watchlistRoutes)
 
-// ML Service Proxy - Hybrid recommendations
+// ── AI Orchestration Layer — single intelligent endpoint ─────────────────────
+// POST /api/query  { q, userId, locale, options }
+app.post("/api/query", async (req, res) => {
+  try {
+    const response = await axios.post(
+      `${AI_ORCHESTRATION_URL}/api/query`,
+      req.body,
+      {
+        timeout: 60_000,
+        headers: {
+          "Content-Type": "application/json",
+          ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+        },
+      }
+    )
+    return res.status(response.status).json(response.data)
+  } catch (error) {
+    if (error.response) {
+      return res.status(error.response.status).json(error.response.data)
+    }
+    if (error.code === "ECONNREFUSED") {
+      return res.status(503).json({
+        success: false,
+        error: "AI orchestration service unavailable",
+      })
+    }
+    return res.status(500).json({
+      success: false,
+      error: "Failed to process query",
+    })
+  }
+})
+
+// ── ML Service Proxy — Hybrid recommendations ─────────────────────────────
 // GET /api/recommendations/:userId calls ML service first, falls back to genre-based
 app.get("/api/recommendations/:userId", async (req, res) => {
   const { userId } = req.params

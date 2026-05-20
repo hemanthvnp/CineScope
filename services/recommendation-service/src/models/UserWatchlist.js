@@ -1,12 +1,6 @@
 const mongoose = require("mongoose")
 
-/**
- * UserWatchlist Schema
- * Tracks movies that users have added to their watchlist or have rated
- * Used to exclude already-seen/rated movies from recommendations
- *
- * Note: user_id references users from the main backend service
- */
+
 const userWatchlistSchema = new mongoose.Schema({
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
@@ -35,7 +29,6 @@ const userWatchlistSchema = new mongoose.Schema({
   }
 }, { timestamps: true })
 
-// Compound unique index: one entry per user per movie
 userWatchlistSchema.index({ user_id: 1, movie_id: 1 }, { unique: true })
 
 module.exports = mongoose.model("UserWatchlist", userWatchlistSchema)

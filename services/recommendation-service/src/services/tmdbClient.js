@@ -1,5 +1,3 @@
-
-
 const axios = require("axios")
 
 const BASE_URL = "https://api.themoviedb.org/3"
@@ -72,8 +70,14 @@ const fetchMovieDetails = async (movieId) => {
     api_key: process.env.TMDB_API_KEY
   })
 
-  cacheSet(cacheKey, response.data)
-  return response.data
+  const data = response.data
+  // /movie/:id returns `genres: [{id, name}]`, not `genre_ids`
+  const normalized = {
+    ...data,
+    genre_ids: data.genre_ids ?? (data.genres?.map(g => g.id) || [])
+  }
+  cacheSet(cacheKey, normalized)
+  return normalized
 }
 
 const fetchMoviesByIds = async (movieIds) => {

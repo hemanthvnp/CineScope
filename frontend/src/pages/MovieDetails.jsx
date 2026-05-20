@@ -3,7 +3,11 @@ import { useEffect, useState } from "react"
 import api from "../api/axios"
 import StarRating from "../components/StarRating"
 import { submitRating, getMovieRatings } from "../api/ratings"
-import { addMovieToDisliked as dislikeMovieApi } from "../api/recommendations"
+import {
+  addMovieToWatchlist,
+  addMovieToLiked,
+  addMovieToDisliked
+} from "../api/recommendations"
 
 function MovieDetails() {
   const { id } = useParams()
@@ -13,53 +17,38 @@ function MovieDetails() {
   const [ratingCount, setRatingCount] = useState(0)
   const [ratingStatus, setRatingStatus] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [watchlistStatus, setWatchlistStatus] = useState(null)
 
-  // Fetch movie details from TMDB
   useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        const response = await api.get(`/movies/${id}`)
-        setMovie(response.data)
-      } catch (error) {
-        console.error("Failed to fetch movie details:", error)
-      }
-    }
-    fetchDetails()
+    api.get(`/movies/${id}`)
+      .then(r => setMovie(r.data))
+      .catch(err => console.error("Failed to fetch movie details:", err))
   }, [id])
 
-  // Fetch existing rating data
   useEffect(() => {
-    const fetchRatings = async () => {
-      try {
-        const data = await getMovieRatings(parseInt(id, 10))
+    getMovieRatings(parseInt(id, 10))
+      .then(data => {
         setCommunityAvg(data.average || 0)
         setRatingCount(data.count || 0)
-        if (data.userRating) {
-          setUserRating(data.userRating)
-        }
-      } catch {
-        // Rating service may not be available — that's fine
-      }
-    }
-    fetchRatings()
+        if (data.userRating) setUserRating(data.userRating)
+      })
+      .catch(() => {})
   }, [id])
+
+  const numericId = parseInt(id, 10)
 
   const handleRate = async (value) => {
     if (isSubmitting) return
     setIsSubmitting(true)
     setRatingStatus("")
-
     try {
-      await submitRating(parseInt(id, 10), value)
+      await submitRating(numericId, value)
       setUserRating(value)
       setRatingStatus("Rating saved!")
-
-      // Refresh community stats
-      const data = await getMovieRatings(parseInt(id, 10))
+      const data = await getMovieRatings(numericId)
       setCommunityAvg(data.average || 0)
       setRatingCount(data.count || 0)
-    } catch (error) {
-      console.error("Failed to submit rating:", error)
+    } catch {
       setRatingStatus("Failed to save rating")
     } finally {
       setIsSubmitting(false)
@@ -67,18 +56,30 @@ function MovieDetails() {
     }
   }
 
-  const handleDislike = async () => {
+  const handleWatchlistAction = async (action) => {
     if (isSubmitting) return
     setIsSubmitting(true)
     setRatingStatus("")
-
     try {
-      await dislikeMovieApi(parseInt(id, 10))
-      setUserRating(1) // Set to 1 as a visual indicator for "Strong Dislike"
-      setRatingStatus("Feedback saved! We'll show you fewer movies like this.")
-    } catch (error) {
-      console.error("Failed to dislike movie:", error)
-      setRatingStatus("Failed to save feedback")
+      if (action === "watchlist") {
+        await addMovieToWatchlist(numericId, "watchlist")
+        setWatchlistStatus("watchlist")
+        setRatingStatus("Added to watchlist!")
+      } else if (action === "liked") {
+        await addMovieToLiked(numericId)
+        setWatchlistStatus("liked")
+        setRatingStatus("Marked as liked!")
+      } else if (action === "watched") {
+        await addMovieToWatchlist(numericId, "watched")
+        setWatchlistStatus("watched")
+        setRatingStatus("Marked as watched!")
+      } else if (action === "disliked") {
+        await addMovieToDisliked(numericId)
+        setWatchlistStatus("disliked")
+        setRatingStatus("Got it — we'll show you fewer like this.")
+      }
+    } catch {
+      setRatingStatus("Action failed. Please try again.")
     } finally {
       setIsSubmitting(false)
       setTimeout(() => setRatingStatus(""), 4000)
@@ -86,6 +87,8 @@ function MovieDetails() {
   }
 
   if (!movie) return <div className="page-shell">Loading...</div>
+
+  const genres = movie.genres?.map(g => g.name).join(", ")
 
   return (
     <section className="movie-details">
@@ -106,40 +109,55 @@ function MovieDetails() {
             <p>⭐ TMDB Score: {movie.vote_average}</p>
             <p>📅 Release Date: {movie.release_date}</p>
             <p>⏱ Runtime: {movie.runtime} mins</p>
-            {movie.genres && (
-              <p>🎭 Genres: {movie.genres.map(g => g.name).join(", ")}</p>
-            )}
+            {genres && <p>🎭 Genres: {genres}</p>}
           </div>
 
-          {/* Community rating */}
           {ratingCount > 0 && (
             <div className="movie-details-community">
               <p>
                 👥 CineScope Community: <strong>{communityAvg}/10</strong>
-                <span className="movie-details-count"> ({ratingCount} {ratingCount === 1 ? "rating" : "ratings"})</span>
+                <span className="movie-details-count">
+                  {" "}({ratingCount} {ratingCount === 1 ? "rating" : "ratings"})
+                </span>
               </p>
             </div>
           )}
 
-          {/* User rating widget */}
+          <div className="movie-details-actions">
+            <button
+              className={`movie-action-btn ${watchlistStatus === "watchlist" ? "active" : ""}`}
+              onClick={() => handleWatchlistAction("watchlist")}
+              disabled={isSubmitting}
+              title="Save to watchlist"
+            >
+              {watchlistStatus === "watchlist" ? "✓ In Watchlist" : "+ Watchlist"}
+            </button>
+            <button
+              className={`movie-action-btn movie-action-btn--watched ${watchlistStatus === "watched" ? "active" : ""}`}
+              onClick={() => handleWatchlistAction("watched")}
+              disabled={isSubmitting}
+              title="Mark as watched"
+            >
+              {watchlistStatus === "watched" ? "✓ Watched" : "👁 Watched"}
+            </button>
+            <button
+              className={`movie-action-btn movie-action-btn--like ${watchlistStatus === "liked" ? "active" : ""}`}
+              onClick={() => handleWatchlistAction("liked")}
+              disabled={isSubmitting}
+              title="Like this movie"
+            >
+              {watchlistStatus === "liked" ? "♥ Liked" : "♥ Like"}
+            </button>
+          </div>
+
           <div className="movie-details-rate">
-            <div className="movie-details-rate-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h3 style={{ margin: 0 }}>Your Rating</h3>
-              <button 
-                className="dislike-btn-text" 
-                onClick={handleDislike}
+            <div className="movie-details-rate-header">
+              <h3>Your Rating</h3>
+              <button
+                className="dislike-btn-text"
+                onClick={() => handleWatchlistAction("disliked")}
                 disabled={isSubmitting}
-                title="Not for me - show fewer like this"
-                style={{ 
-                  background: 'rgba(255,255,255,0.05)', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#aaa',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  transition: 'all 0.2s'
-                }}
+                title="Not for me — show fewer like this"
               >
                 👎 Not for me
               </button>
@@ -151,7 +169,7 @@ function MovieDetails() {
               size={1.6}
             />
             {ratingStatus && (
-              <p className="movie-details-rate-status" style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#ffcc00' }}>{ratingStatus}</p>
+              <p className="movie-details-rate-status">{ratingStatus}</p>
             )}
           </div>
         </div>
@@ -160,4 +178,4 @@ function MovieDetails() {
   )
 }
 
-export default MovieDetails
+export default MovieDetails

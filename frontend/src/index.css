@@ -1813,6 +1813,156 @@ p {
 }
 
 /* ============================================================
+   MOVIE CARD — PLACEHOLDER & YEAR
+   ============================================================ */
+
+.rec-card-poster--placeholder {
+  width: 100%;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #1a1a2e, #16213e);
+  font-size: 3rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 700;
+}
+
+.rec-card-year {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+/* ============================================================
+   ROW COUNT BADGE
+   ============================================================ */
+
+.rec-row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* ============================================================
+   MOVIE DETAILS — ACTION BUTTONS
+   ============================================================ */
+
+.movie-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.movie-action-btn {
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f5f7;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.movie-action-btn:hover {
+  background: rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.55);
+  transform: translateY(-1px);
+}
+
+.movie-action-btn.active {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.55);
+  color: #86efac;
+}
+
+.movie-action-btn--like:hover {
+  background: rgba(244, 63, 94, 0.18);
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+.movie-action-btn--like.active {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.6);
+  color: #fda4af;
+}
+
+.movie-action-btn--watched:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.movie-action-btn--watched.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #7dd3fc;
+}
+
+.movie-details-rate-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.movie-details-rate-header h3 {
+  margin: 0;
+}
+
+/* ============================================================
+   WATCHLIST — YEAR & RATING
+   ============================================================ */
+
+.watchlist-movie-item {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.watchlist-movie-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.watchlist-movie-year {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0.15rem 0 0;
+}
+
+.watchlist-movie-rating {
+  font-size: 0.75rem;
+  color: #ffd700;
+  margin: 0.1rem 0 0;
+}
+
+.watchlist-poster-placeholder {
+  width: 100%;
+  aspect-ratio: 2/3;
+  max-width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #1a1a2e, #16213e);
+  border-radius: 10px;
+  font-size: 2.5rem;
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+}
+
+/* ============================================================
    BOOST BADGE (PREFERENCE MATCH INDICATOR)
    ============================================================ */
 

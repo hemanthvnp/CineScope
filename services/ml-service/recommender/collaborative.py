@@ -1,6 +1,5 @@
+from typing import Dict, List, Optional, Set, Tuple
 
-
-import os
 import numpy as np
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
@@ -14,7 +13,7 @@ N_COMPONENTS = 20
 MIN_RATINGS = 2
 
 
-def build_svd_model(all_ratings):
+def build_svd_model(all_ratings: List[Dict]) -> None:
     global _predicted_matrix, _user_index, _movie_index, _index_movie, _is_built
 
     if len(all_ratings) < MIN_RATINGS:
@@ -63,7 +62,11 @@ def build_svd_model(all_ratings):
           f"{n_components} latent factors, {len(all_ratings)} ratings")
 
 
-def get_collaborative_scores(user_id, exclude_ids=None, limit=50):
+def get_collaborative_scores(
+    user_id: str,
+    exclude_ids: Optional[Set[int]] = None,
+    limit: int = 50,
+) -> List[Tuple[int, float]]:
     if not _is_built:
         return []
 
@@ -98,11 +101,11 @@ def get_collaborative_scores(user_id, exclude_ids=None, limit=50):
     return results[:limit]
 
 
-def is_model_built():
+def is_model_built() -> bool:
     return _is_built
 
 
-def get_similar_users_count(user_id):
+def get_similar_users_count(user_id: str) -> int:
     if not _is_built:
         return 0
     return len(_user_index)

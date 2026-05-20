@@ -7,15 +7,15 @@ import "./EnhancedSearchBar.css"
 const EnhancedSearchBar = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { 
-    search, setSearch, 
-    year, setYear, 
-    genre, setGenre, 
-    language, setLanguage, 
+  const {
+    search, setSearch,
+    year, setYear,
+    genre, setGenre,
+    language, setLanguage,
     genresList, languagesList,
-    setFilters, clearSearch 
+    setFilters, clearSearch
   } = useSearchFilter()
-  
+
   const [suggestions, setSuggestions] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -79,28 +79,20 @@ const EnhancedSearchBar = () => {
       language: currentFilters.language ?? language
     }
 
-    // allow search if we have a query OR if filters are active
     if (!searchTerm.trim() && !activeFilters.year && !activeFilters.genre && !activeFilters.language) return
 
-    // Add to recent searches if there's a query
     if (searchTerm.trim()) {
       const newRecent = [searchTerm, ...recentSearches.filter(s => s !== searchTerm)].slice(0, 5)
       setRecentSearches(newRecent)
       localStorage.setItem("cinescope-recent-searches", JSON.stringify(newRecent))
     }
 
-    // Apply filters and navigate
-    // Ensure context is updated
     if (currentFilters.year !== undefined) setYear(currentFilters.year)
     if (currentFilters.genre !== undefined) setGenre(currentFilters.genre)
     if (currentFilters.language !== undefined) setLanguage(currentFilters.language)
-    
+
     setFilters(activeFilters)
-    
-    // Navigate to search page
     navigate(`/search?q=${encodeURIComponent(searchTerm)}&year=${activeFilters.year}&genre=${activeFilters.genre}&language=${activeFilters.language}`)
-    
-    // Close panels
     setShowSuggestions(false)
     inputRef.current?.blur()
   }
@@ -132,7 +124,6 @@ const EnhancedSearchBar = () => {
     setGenre("")
     setLanguage("")
     setFilters({ year: "", genre: "", language: "" })
-    // If we are on search page, navigate to reflect cleared filters
     if (location.pathname === "/search") {
       navigate(`/search?q=${encodeURIComponent(search)}`)
     }
@@ -151,7 +142,7 @@ const EnhancedSearchBar = () => {
             <circle cx="11" cy="11" r="8" strokeWidth="2" />
             <path d="m21 21-4.35-4.35" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          
+
           <input
             ref={inputRef}
             type="text"
@@ -162,7 +153,7 @@ const EnhancedSearchBar = () => {
             onKeyDown={handleKeyPress}
             className="search-input"
           />
-          
+
           {search && (
             <button
               className="clear-search-btn"
@@ -174,7 +165,7 @@ const EnhancedSearchBar = () => {
               </svg>
             </button>
           )}
-          
+
           <button
             className="filter-toggle-btn"
             onClick={() => setShowFilters(!showFilters)}
@@ -199,7 +190,6 @@ const EnhancedSearchBar = () => {
               </div>
             ) : (
               <>
-                {/* Recent Searches */}
                 {recentSearches.length > 0 && search.length < 2 && (
                   <div className="suggestion-section">
                     <div className="suggestion-header">
@@ -224,7 +214,6 @@ const EnhancedSearchBar = () => {
                   </div>
                 )}
 
-                {/* Movie Suggestions */}
                 {suggestions.length > 0 && (
                   <div className="suggestion-section">
                     <div className="suggestion-header">
@@ -257,7 +246,6 @@ const EnhancedSearchBar = () => {
                   </div>
                 )}
 
-                {/* No Results */}
                 {search.length >= 2 && !loading && suggestions.length === 0 && (
                   <div className="suggestion-section">
                     <div className="no-results">
@@ -317,8 +305,8 @@ const EnhancedSearchBar = () => {
             >
               <option value="">All Languages</option>
               {languagesList.map((l) => (
-                <option key={l.iso_639_1} value={l.iso_639_1}>
-                  {l.english_name} {l.name !== l.english_name ? `(${l.name})` : ""}
+                <option key={l.code} value={l.code}>
+                  {l.name}
                 </option>
               ))}
             </select>

@@ -1,18 +1,18 @@
-
-
 import os
 import re
+from typing import Dict, List, Optional, Set, Tuple
+
 from recommender import content_based, collaborative, explainer
 from database import (
-    get_all_movies, get_all_genres, get_movie_genres,
+    get_all_movies, get_all_genres,
     get_user_preferences, get_user_rated_movies,
     get_all_user_ratings, get_trending_movie_ids, get_user_watchlist,
     get_user_profile
 )
 import tmdb_client
 
-CONTENT_WEIGHT = 0.75
-COLLAB_WEIGHT = 0.25
+CONTENT_WEIGHT = float(os.getenv("CONTENT_WEIGHT", "0.75"))
+COLLAB_WEIGHT = float(os.getenv("COLLAB_WEIGHT", "0.25"))
 DEFAULT_LIMIT = int(os.getenv("DEFAULT_LIMIT", "20"))
 MIN_RATINGS_FOR_COLLAB = int(os.getenv("MIN_RATINGS_FOR_COLLAB", "3"))
 MIN_ACCEPTABLE_VOTE_AVG = float(os.getenv("MIN_ACCEPTABLE_VOTE_AVG", "6.0"))
@@ -29,12 +29,13 @@ _movie_genre_map = {}
 _models_initialized = False
 
 
-def initialize_models():
+def initialize_models() -> None:
     global _movies_lookup, _genre_names, _genre_name_to_id, _movie_genre_map, _models_initialized
 
     print("[ml-service] Initializing recommendation models...")
 
     movies = get_all_movies()
+    all_ratings = get_all_user_ratings()
     _genre_names = get_all_genres()
     _genre_name_to_id = {name.lower(): gid for gid, name in _genre_names.items()}
 
@@ -46,12 +47,11 @@ def initialize_models():
         _movie_genre_map[mid] = m.get("genre_ids", [])
 
     content_based.build_tfidf_model(movies, _movie_genre_map, _genre_names)
+    collaborative.build_svd_model(all_ratings)
 
     _models_initialized = True
     print(f"[ml-service] Models initialized. {len(movies)} movies, "
           f"{len(_genre_names)} genres, {len(all_ratings)} ratings")
-
-
 
 
 def _parse_era(era_str):
@@ -102,7 +102,7 @@ def _safe_float(value, default=0.0):
         return default
 
 
-def _compute_quality_score(movie):
+def _compute_quality_score(movie: Optional[Dict]) -> float:
     if not movie:
         return 0.0
 
@@ -117,7 +117,7 @@ def _compute_quality_score(movie):
     return round((0.60 * rating_norm) + (0.25 * confidence) + (0.15 * popularity_norm), 4)
 
 
-def _passes_quality_floor(movie, is_regional=False):
+def _passes_quality_floor(movie: Optional[Dict], is_regional: bool = False) -> bool:
     if not movie:
         return False
     
@@ -130,7 +130,7 @@ def _passes_quality_floor(movie, is_regional=False):
     return vote_avg >= min_avg and vote_count >= min_votes
 
 
-def _compute_preference_boost(movie_id, user_profile):
+def _compute_preference_boost(movie_id: int, user_profile: Dict) -> Tuple[float, List[str]]:
     movie = _movies_lookup.get(movie_id)
     if not movie:
         return 1.0, []
@@ -164,9 +164,7 @@ def _compute_preference_boost(movie_id, user_profile):
     return multiplier, boost_reasons
 
 
-
-
-def get_hybrid_recommendations(user_id, limit=None):
+def get_hybrid_recommendations(user_id: str, limit: Optional[int] = None) -> Dict:
     if not _models_initialized:
         initialize_models()
 
@@ -266,7 +264,7 @@ def get_hybrid_recommendations(user_id, limit=None):
     }
 
 
-def _determine_strategy(has_ratings, has_prefs, has_enough_for_collab):
+def _determine_strategy(has_ratings: bool, has_prefs: bool, has_enough_for_collab: bool) -> str:
     if has_ratings and has_enough_for_collab and collaborative.is_model_built():
         return "hybrid"
     elif has_ratings:
@@ -377,24 +375,22 @@ def _apply_preference_boosts(results, user_profile, limit):
         low_quality = [r for r in final_results if not r.get("context", {}).get("passes_quality_floor")]
         results_so_far.extend(low_quality[:needed])
         
-    if len(results_so_far) < limit:
-        needed = limit - len(results_so_far)
-        exclude_ids.update({r["movie_id"] for r in results_so_far})
-        
+    if len(results_so_far) < limit and pref_lang:
+        already_included = {r["movie_id"] for r in results_so_far}
         try:
-            trending_regional = tmdb_client.fetch_discover_movies(language=pref_lang or "ta", pages=2)
+            trending_regional = tmdb_client.fetch_discover_movies(language=pref_lang, pages=2)
             for m in trending_regional:
-                if m["movie_id"] not in exclude_ids and len(results_so_far) < limit:
+                if m["movie_id"] not in already_included and len(results_so_far) < limit:
                     results_so_far.append({
                         "movie_id": m["movie_id"],
                         "score": 0.1,
                         "reason_type": "trending_discovery",
-                        "context": {"discovery_lang": pref_lang or "ta"}
+                        "context": {"discovery_lang": pref_lang}
                     })
                     if m["movie_id"] not in _movies_lookup:
                         _movies_lookup[m["movie_id"]] = m
                         _movie_genre_map[m["movie_id"]] = m.get("genre_ids", [])
-        except:
+        except Exception:
             pass
 
     return results_so_far[:limit]

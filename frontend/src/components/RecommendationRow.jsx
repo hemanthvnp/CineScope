@@ -2,19 +2,6 @@ import { useRef } from "react"
 import MovieCard from "./MovieCard"
 import SkeletonRow from "./SkeletonRow"
 
-/**
- * RecommendationRow Component
- *
- * A horizontal scrollable carousel of MovieCard components.
- * Supports left/right scroll arrows and shows loading skeletons.
- *
- * Props:
- *   title - Section heading (e.g., "✨ Recommended For You")
- *   movies - Array of movie objects with explanation data
- *   loading - Whether the data is still loading
- *   emptyMessage - Message to show when no movies are available
- *   showExplanation - Whether to show explanation badges on cards
- */
 function RecommendationRow({
   title,
   movies = [],
@@ -27,10 +14,7 @@ function RecommendationRow({
   const scroll = (direction) => {
     if (!stripRef.current) return
     const amount = stripRef.current.offsetWidth * 0.7
-    stripRef.current.scrollBy({
-      left: direction === "left" ? -amount : amount,
-      behavior: "smooth"
-    })
+    stripRef.current.scrollBy({ left: direction === "left" ? -amount : amount, behavior: "smooth" })
   }
 
   if (loading) return <SkeletonRow />
@@ -46,7 +30,7 @@ function RecommendationRow({
 
   return (
     <section className="rec-row">
-      <h2 className="rec-row-title">{title}</h2>
+      <h2 className="rec-row-title">{title} <span className="rec-row-count">{movies.length}</span></h2>
       <div className="rec-row-container">
         <button
           className="rec-row-arrow rec-row-arrow--left"

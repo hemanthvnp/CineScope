@@ -31,9 +31,9 @@ services:
       - key: MIN_RATINGS_FOR_COLLAB
         value: "1"
       - key: CONTENT_WEIGHT
-        value: "0.4"
+        value: "0.75"
       - key: COLLAB_WEIGHT
-        value: "0.6"
+        value: "0.25"
       - key: DEBUG
         value: "False"
 
@@ -59,9 +59,11 @@ services:
       - key: TMDB_API_KEY
         sync: false
       - key: RECOMMENDATION_SERVICE_URL
-        sync: false  # Set to https://cinescope-recommendation-service.onrender.com
+        value: https://cinescope-recommendation-service.onrender.com
       - key: ML_SERVICE_URL
-        sync: false  # Set to https://cinescope-ml-service.onrender.com
+        value: https://cinescope-ml-service.onrender.com
+      - key: AI_ORCHESTRATION_URL
+        value: https://cinescope-ai-orchestration.onrender.com
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -74,6 +76,22 @@ services:
         sync: false
 
   - type: web
+    name: cinescope-ai-orchestration
+    runtime: image
+    image:
+      url: ghcr.io/hemanthvnp/cinescope-ai-orchestration:latest
+    plan: free
+    envVars:
+      - key: PORT
+        value: "9000"
+      - key: TMDB_API_KEY
+        sync: false
+      - key: ML_SERVICE_URL
+        value: https://cinescope-ml-service.onrender.com
+      - key: RECOMMENDATION_SERVICE_URL
+        value: https://cinescope-recommendation-service.onrender.com
+
+  - type: web
     name: cinescope-frontend
     runtime: image
     image:
@@ -81,4 +99,6 @@ services:
     plan: free
     envVars:
       - key: BACKEND_URL
-        value: https://cinescope-backend.onrender.com
+        value: https://cinescope-backend-t0iu.onrender.com
+      - key: BACKEND_HOST
+        value: cinescope-backend-t0iu.onrender.com

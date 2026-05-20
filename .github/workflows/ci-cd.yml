@@ -11,7 +11,30 @@ env:
   OWNER: ${{ github.repository_owner }}
 
 jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            pytest numpy scipy scikit-learn \
+            pymongo requests \
+            pydantic python-dotenv
+
+      - name: Run ML service tests
+        run: pytest services/ml-service/tests/ -v --tb=short
+
   build-and-push:
+    needs: test
     name: Build & Push — ${{ matrix.name }}
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -29,9 +52,11 @@ jobs:
             context: ./services/recommendation-service
           - name: ml-service
             context: ./services/ml-service
+          - name: ai-orchestration
+            context: ./services/ai-orchestration
           - name: frontend
             context: ./frontend
-            build-args: VITE_API_URL=/api
+            build-args: VITE_API_URL=https://cinescope-backend-t0iu.onrender.com/api
 
     steps:
       - name: Checkout
@@ -71,6 +96,7 @@ jobs:
             [backend]="${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
             [recommendation]="${{ secrets.RENDER_DEPLOY_HOOK_RECOMMENDATION }}"
             [ml]="${{ secrets.RENDER_DEPLOY_HOOK_ML }}"
+            [ai-orchestration]="${{ secrets.RENDER_DEPLOY_HOOK_AI_ORCHESTRATION }}"
             [frontend]="${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}"
           )
           for service in "${!hooks[@]}"; do
