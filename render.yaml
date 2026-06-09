@@ -84,6 +84,8 @@ services:
     envVars:
       - key: PORT
         value: "9000"
+      - key: GROQ_API_KEY
+        sync: false
       - key: TMDB_API_KEY
         sync: false
       - key: ML_SERVICE_URL
