@@ -69,9 +69,27 @@ const searchMovies = async (req, res) => {
       return res.status(400).json({ message: "Search query or filters are required" })
     }
 
-    // Text query present — TMDB search, then apply genre/language filters to results
-    const data = await tmdbService.searchMovies(query, page, year)
-    let results = data.results || []
+    // Text query present — TMDB search, then apply genre/language filters
+    // When filters are active, fetch up to 5 pages to build a large enough pool
+    const needsFiltering = genre || language
+    const pagesToFetch = needsFiltering ? Math.min(5, page + 2) : 1
+
+    const pages = await Promise.all(
+      Array.from({ length: pagesToFetch }, (_, i) =>
+        tmdbService.searchMovies(query, i + 1, year)
+      )
+    )
+
+    const firstPage = pages[0]
+    let results = pages.flatMap(p => p.results || [])
+
+    // Deduplicate by id
+    const seen = new Set()
+    results = results.filter(m => {
+      if (seen.has(m.id)) return false
+      seen.add(m.id)
+      return true
+    })
 
     if (genre) {
       const genreId = parseInt(genre)
@@ -83,7 +101,7 @@ const searchMovies = async (req, res) => {
       results = results.filter(m => m.original_language === language)
     }
 
-    return res.json({ ...data, results })
+    return res.json({ ...firstPage, results })
   } catch (error) {
     console.error("Search error:", error)
     res.status(500).json({ message: "Failed to search movies" })

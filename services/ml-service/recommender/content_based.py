@@ -144,27 +144,28 @@ def get_content_scores(
     PENALTY_MULTIPLIER = 1.5
     
     final_results_dict = {}
-    
+
     per_seed_limit = max(8, limit // len(pos_seeds)) if pos_seeds else 0
-    
+
     for seed_mid, candidates in seed_candidates.items():
         seed_movie = movies_lookup.get(seed_mid, {})
         seed_lang = (seed_movie.get("language") or seed_movie.get("original_language") or "").lower().strip()
-        
+
         for mid, sim in candidates[:per_seed_limit * 2]:
             mid_idx = _movie_id_index[mid]
             penalty = neg_scores[mid_idx] * PENALTY_MULTIPLIER
-            
+
             blended_score = (0.3 * pos_scores[mid_idx]) + (0.7 * sim) - penalty
-            
+
             candidate_movie = movies_lookup.get(mid, {})
             cand_lang = (candidate_movie.get("language") or candidate_movie.get("original_language") or "").lower().strip()
             if cand_lang == seed_lang and cand_lang != "en":
                 blended_score *= 1.2
-            
+
             if blended_score > 0.03:
                 if mid not in final_results_dict or blended_score > final_results_dict[mid][0]:
-                    final_results_dict[mid] = (blended_score, seed_mid)
+                    attribution = best_match.get(mid, (seed_mid, 0))[0]
+                    final_results_dict[mid] = (blended_score, attribution)
 
     results = []
     for mid, (score, match_mid) in final_results_dict.items():

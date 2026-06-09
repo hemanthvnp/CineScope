@@ -7,16 +7,28 @@ Steps:
   3. Score and rank with a composite formula.
   4. Fetch streaming providers for the top-N movies (parallel).
   5. If intent is filter_provider, keep only movies with providers.
-  6. Optionally synthesise a short intro with Claude Sonnet.
+  6. Optionally synthesise a natural-language summary.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any, Dict, List, Optional, Tuple
+
+from groq import AsyncGroq
 
 from models.intent import QueryIntent
 from models.query import MovieResult, Provider
 from tools.providers_tool import fetch_providers
+
+_groq_client: Optional[AsyncGroq] = None
+
+
+def _get_groq() -> AsyncGroq:
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+    return _groq_client
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -82,27 +94,46 @@ def _build_movie_result(movie: dict, providers: List[dict]) -> Optional[MovieRes
     )
 
 
-def _synthesise(
+async def _synthesise(
     results: List[MovieResult],
     original_query: str,
     interpreted_as: str,
 ) -> str:
-    """Template-based synthesis — free, zero latency."""
-    count = len(results)
-    if not count:
+    """LLM synthesis of movie results via Groq."""
+    if not results:
         return f"No results found for: {original_query}"
 
-    top = results[0]
-    genres_str = ", ".join(top.genres[:2]) if top.genres else ""
-    genre_note = f" across {genres_str}" if genres_str else ""
-
-    return (
-        f"Found {count} movie{'s' if count != 1 else ''}{genre_note} "
-        f"matching \"{interpreted_as}\". "
-        f"Top pick: {top.title}"
-        f"{f' ({top.year})' if top.year else ''}"
-        f"{f' — {top.overview[:120]}…' if top.overview else '.'}"
+    top_titles = ", ".join(
+        f"{r.title} ({r.year})" if r.year else r.title
+        for r in results[:5]
     )
+    top = results[0]
+    context = (
+        f"User query: {original_query}\n"
+        f"Interpreted as: {interpreted_as}\n"
+        f"Total results: {len(results)}\n"
+        f"Top matches: {top_titles}\n"
+        f"Best pick overview: {top.overview[:200] if top.overview else 'N/A'}"
+    )
+
+    response = await _get_groq().chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful movie assistant for CineScope. "
+                    "Write a single concise sentence (max 40 words) that introduces the search results to the user. "
+                    "Mention the top movie by name and briefly why it fits. No markdown, no lists, just prose."
+                ),
+            },
+            {"role": "user", "content": context},
+        ],
+        max_tokens=80,
+        temperature=0.4,
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -178,55 +209,69 @@ async def aggregate(
     if intent.primary_intent in ("summarize", "lookup"):
         reviews_data = tool_results.get("reviews")
         details_data = tool_results.get("movie_details")
-        synthesis = _synthesise_review(reviews_data, details_data, original_query)
+        synthesis = await _synthesise_review(reviews_data, details_data, original_query)
     elif include_synthesis and results:
-        synthesis = _synthesise(results, original_query, intent.interpreted_as)
+        synthesis = await _synthesise(results, original_query, intent.interpreted_as)
 
     return results, synthesis
 
 
-def _synthesise_review(
+async def _synthesise_review(
     reviews_data: Optional[dict],
     details_data: Optional[dict],
     query: str,
 ) -> Optional[str]:
-    """Template-based review/lookup synthesis — free, zero latency."""
-    parts: List[str] = []
+    """LLM synthesis for review/lookup intents via Groq."""
+    if not details_data and not reviews_data:
+        return None
+
+    context_parts: list[str] = [f"User query: {query}"]
 
     if details_data:
         title = details_data.get("title", "")
-        year  = str(details_data.get("release_date", ""))[:4]
+        year = str(details_data.get("release_date", ""))[:4]
         tagline = details_data.get("tagline", "")
-        overview = (details_data.get("overview") or "")[:250]
+        overview = (details_data.get("overview") or "")[:300]
         runtime = details_data.get("runtime")
         cast = details_data.get("cast", [])
 
-        header = f"{title} ({year})" if year else title
+        context_parts.append(f"Movie: {title} ({year})")
         if tagline:
-            header += f' — "{tagline}"'
-        parts.append(header)
+            context_parts.append(f"Tagline: {tagline}")
         if overview:
-            parts.append(overview)
+            context_parts.append(f"Overview: {overview}")
         if runtime:
-            parts.append(f"Runtime: {runtime} min")
+            context_parts.append(f"Runtime: {runtime} min")
         if cast:
-            parts.append(f"Starring: {', '.join(cast[:4])}")
+            context_parts.append(f"Cast: {', '.join(cast[:4])}")
 
     if reviews_data:
         reviews = reviews_data.get("reviews", [])[:3]
-        if reviews:
-            avg_rating = None
-            rated = [r["rating"] for r in reviews if r.get("rating")]
-            if rated:
-                avg_rating = round(sum(rated) / len(rated), 1)
-
-            parts.append(
-                f"Community rating: {avg_rating}/10" if avg_rating
-                else f"{reviews_data.get('total_reviews', len(reviews))} reviews"
-            )
-            excerpt = reviews[0].get("content", "")[:200]
+        rated = [r["rating"] for r in reviews if r.get("rating")]
+        if rated:
+            avg = round(sum(rated) / len(rated), 1)
+            context_parts.append(f"Average user rating: {avg}/10")
+        for r in reviews:
+            excerpt = (r.get("content") or "")[:200]
             if excerpt:
-                author = reviews[0].get("author", "Reviewer")
-                parts.append(f'"{excerpt}…" — {author}')
+                context_parts.append(f'Review by {r.get("author", "user")}: "{excerpt}"')
 
-    return " | ".join(parts) if parts else None
+    response = await _get_groq().chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful movie assistant for CineScope. "
+                    "Using the provided movie details and reviews, write a concise 2-3 sentence summary "
+                    "that answers the user's query. Include the rating if available. "
+                    "No markdown, no bullet points, just clear prose."
+                ),
+            },
+            {"role": "user", "content": "\n".join(context_parts)},
+        ],
+        max_tokens=150,
+        temperature=0.4,
+    )
+
+    return response.choices[0].message.content.strip()

@@ -151,6 +151,15 @@ def get_user_rated_movies(user_id: str):
 
     rated = {}
 
+    # Seed with explicit ratings collection first
+    if "ratings" in db.list_collection_names():
+        user_ratings = list(db.ratings.find(
+            {"userId": ObjectId(user_id)},
+            {"_id": 0, "movieId": 1, "rating": 1}
+        ))
+        for r in user_ratings:
+            rated[r["movieId"]] = float(r["rating"])
+
     watchlist = list(db.userwatchlists.find(
         {
             "user_id": ObjectId(user_id),
@@ -161,18 +170,10 @@ def get_user_rated_movies(user_id: str):
     for w in watchlist:
         if w["status"] == "disliked":
             rated[w["movie_id"]] = 1.0
-        elif w["status"] == "liked":
+        elif w["status"] == "liked" and w["movie_id"] not in rated:
             rated[w["movie_id"]] = 10.0
-        elif w.get("rating") is not None:
+        elif w.get("rating") is not None and w["movie_id"] not in rated:
             rated[w["movie_id"]] = float(w["rating"])
-
-    if "ratings" in db.list_collection_names():
-        user_ratings = list(db.ratings.find(
-            {"userId": ObjectId(user_id)},
-            {"_id": 0, "movieId": 1, "rating": 1}
-        ))
-        for r in user_ratings:
-            rated[r["movieId"]] = float(r["rating"])
 
     return rated
 

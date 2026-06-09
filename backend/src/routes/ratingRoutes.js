@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/authMiddleware")
 
 
 router.post("/", authMiddleware, ratingController.submitRating)
+router.delete("/:movieId", authMiddleware, ratingController.deleteRating)
 router.get("/me", authMiddleware, ratingController.getUserRatings)
 router.get("/movie/:movieId", authMiddleware, ratingController.getMovieRatings)
 

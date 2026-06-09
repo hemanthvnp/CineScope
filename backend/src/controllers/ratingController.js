@@ -53,6 +53,41 @@ const submitRating = async (req, res) => {
 }
 
 
+const deleteRating = async (req, res) => {
+  try {
+    const userId = req.auth.userId
+    const movieId = parseInt(req.params.movieId, 10)
+
+    if (isNaN(movieId)) {
+      return res.status(400).json({ message: "Valid movieId is required." })
+    }
+
+    const deleted = await Rating.findOneAndDelete({ userId, movieId })
+    if (!deleted) {
+      return res.status(404).json({ message: "Rating not found." })
+    }
+
+    // Sync removal to recommendation service watchlist
+    try {
+      await axios.patch(
+        `${RECOMMENDATION_SERVICE_URL}/api/recommendations/${userId}/watchlist/${movieId}`,
+        { status: "removed" },
+        { timeout: 5000 }
+      )
+    } catch (syncError) {
+      console.warn("Failed to sync rating removal to recommendation service:", syncError.message)
+    }
+
+    axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch(() => {})
+
+    return res.status(200).json({ message: "Rating removed." })
+  } catch (error) {
+    console.error("Failed to delete rating:", error.message)
+    return res.status(500).json({ message: "Failed to delete rating." })
+  }
+}
+
+
 const getUserRatings = async (req, res) => {
   try {
     const userId = req.auth.userId
@@ -102,6 +137,7 @@ const getMovieRatings = async (req, res) => {
 
 module.exports = {
   submitRating,
+  deleteRating,
   getUserRatings,
   getMovieRatings
 }

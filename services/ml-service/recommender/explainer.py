@@ -1,6 +1,19 @@
 
 
 
+_LANG_NAMES = {
+    "ta": "Tamil", "te": "Telugu", "hi": "Hindi", "ml": "Malayalam",
+    "kn": "Kannada", "ko": "Korean", "ja": "Japanese", "zh": "Chinese",
+    "fr": "French", "de": "German", "es": "Spanish", "it": "Italian",
+    "pt": "Portuguese", "ru": "Russian", "tr": "Turkish", "th": "Thai",
+    "ar": "Arabic", "bn": "Bengali", "pa": "Punjabi",
+}
+
+
+def _lang_display(code: str) -> str:
+    return _LANG_NAMES.get(code.lower(), code.upper())
+
+
 def generate_explanation(movie, reason_type, context=None):
     context = context or {}
 
@@ -70,9 +83,10 @@ def generate_explanation(movie, reason_type, context=None):
             }
 
     elif reason_type == "language_discovery":
-        lang = context.get("discovery_lang", "your preferred language")
+        lang = context.get("discovery_lang", "")
+        label = _lang_display(lang) if lang else "your preferred language"
         return {
-            "reason": f"Popular in {lang.upper()} cinema",
+            "reason": f"Popular in {label} cinema",
             "type": "language_preference"
         }
 
