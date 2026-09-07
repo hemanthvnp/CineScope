@@ -45,3 +45,20 @@ Thumbs.db
 
 # Local dev
 *.local
+
+# Claude Code local tool config
+.claude/
+
+# Personal one-off scripts / debug scratch files
+remove_comments.py
+services/ml-service/test_api.py
+services/ml-service/test_api_v2.py
+services/ml-service/test_explainer.py
+services/ml-service/test_local.py
+services/ml-service/test_negative_feedback_v2.py
+services/ml-service/test_tmdb.py
+
+# Debug run output
+services/ml-service/*_log.txt
+services/ml-service/*_results.txt
+services/ml-service/userId.txt

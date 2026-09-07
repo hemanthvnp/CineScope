@@ -12,23 +12,15 @@ Steps:
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from groq import AsyncGroq
+import litellm
 
 from models.intent import QueryIntent
 from models.query import MovieResult, Provider
 from tools.providers_tool import fetch_providers
 
-_groq_client: Optional[AsyncGroq] = None
-
-
-def _get_groq() -> AsyncGroq:
-    global _groq_client
-    if _groq_client is None:
-        _groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-    return _groq_client
+_MODEL = "groq/llama-3.3-70b-versatile"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -99,7 +91,7 @@ async def _synthesise(
     original_query: str,
     interpreted_as: str,
 ) -> str:
-    """LLM synthesis of movie results via Groq."""
+    """LLM synthesis of movie results via litellm."""
     if not results:
         return f"No results found for: {original_query}"
 
@@ -116,8 +108,8 @@ async def _synthesise(
         f"Best pick overview: {top.overview[:200] if top.overview else 'N/A'}"
     )
 
-    response = await _get_groq().chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    response = await litellm.acompletion(
+        model=_MODEL,
         messages=[
             {
                 "role": "system",
@@ -221,7 +213,7 @@ async def _synthesise_review(
     details_data: Optional[dict],
     query: str,
 ) -> Optional[str]:
-    """LLM synthesis for review/lookup intents via Groq."""
+    """LLM synthesis for review/lookup intents via litellm."""
     if not details_data and not reviews_data:
         return None
 
@@ -256,8 +248,8 @@ async def _synthesise_review(
             if excerpt:
                 context_parts.append(f'Review by {r.get("author", "user")}: "{excerpt}"')
 
-    response = await _get_groq().chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    response = await litellm.acompletion(
+        model=_MODEL,
         messages=[
             {
                 "role": "system",

@@ -1,21 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Optional
 
-from groq import AsyncGroq
+import litellm
 
 from models.intent import QueryEntities, QueryIntent
 
-_client: Optional[AsyncGroq] = None
-
-
-def _get_client() -> AsyncGroq:
-    global _client
-    if _client is None:
-        _client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-    return _client
+_MODEL = "groq/llama-3.1-8b-instant"
 
 
 _CLASSIFY_FUNCTION = {
@@ -129,10 +121,8 @@ async def classify_intent(
     query: str,
     user_context: Optional[dict] = None,
 ) -> QueryIntent:
-    client = _get_client()
-
-    response = await client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+    response = await litellm.acompletion(
+        model=_MODEL,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": query},
@@ -145,7 +135,7 @@ async def classify_intent(
 
     message = response.choices[0].message
     if not message.tool_calls:
-        raise RuntimeError(f"Groq returned no function call for query: {query!r}")
+        raise RuntimeError(f"litellm returned no function call for query: {query!r}")
 
     data: dict = json.loads(message.tool_calls[0].function.arguments)
 

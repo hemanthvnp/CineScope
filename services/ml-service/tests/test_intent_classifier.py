@@ -1,5 +1,5 @@
 """
-Unit tests for the intent classifier — Groq client is mocked so no API key needed.
+Unit tests for the intent classifier — litellm.acompletion is mocked so no API key needed.
 Tests verify that classify_intent_sync correctly unpacks tool-call JSON into QueryIntent.
 Run with:  pytest services/ml-service/tests/test_intent_classifier.py -v
 """
@@ -27,9 +27,10 @@ def _fake_response(primary_intent: str, **kwargs) -> MagicMock:
 
 
 def _patch_groq(response: MagicMock):
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=response)
-    return patch("orchestrator.intent_classifier._get_client", return_value=client)
+    return patch(
+        "orchestrator.intent_classifier.litellm.acompletion",
+        AsyncMock(return_value=response),
+    )
 
 
 class TestIntentRouting:

@@ -28,7 +28,7 @@ jobs:
           pip install --quiet \
             pytest numpy scipy scikit-learn \
             pymongo requests \
-            pydantic python-dotenv groq
+            pydantic python-dotenv litellm
 
       - name: Run ML service tests
         run: pytest services/ml-service/tests/ -v --tb=short
