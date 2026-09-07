@@ -6,7 +6,7 @@ from urllib3.util.retry import Retry
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 BASE_URL = "https://api.themoviedb.org/3"
-CACHE_TTL = 900
+CACHE_TTL = 3600
 _cache = {}
 
 
@@ -104,6 +104,8 @@ def fetch_trending_movies(limit=40):
                     "language": m.get("original_language", "en"),
                     "genre_ids": m.get("genre_ids", [])
                 })
+            if page < pages:
+                time.sleep(0.5)
         except Exception as e:
             print(f"[tmdb_client] Failed to fetch trending page {page}: {e}")
 
@@ -139,6 +141,8 @@ def fetch_discover_movies(language="en", pages=2):
                     "language": m.get("original_language", "en"),
                     "genre_ids": m.get("genre_ids", [])
                 })
+            if page < pages:
+                time.sleep(0.5)
         except Exception as e:
             print(f"[tmdb_client] Failed to fetch discover page {page}: {e}")
 

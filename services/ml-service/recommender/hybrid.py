@@ -203,7 +203,7 @@ def get_hybrid_recommendations(user_id: str, limit: Optional[int] = None) -> Dic
     if pref_lang and pref_lang != "en":
         existing_mids = {r["movie_id"] for r in recommendations}
         try:
-            lang_movies = tmdb_client.fetch_discover_movies(language=pref_lang, pages=8)
+            lang_movies = tmdb_client.fetch_discover_movies(language=pref_lang, pages=3)
             
             injected_count = 0
             for m in lang_movies:
