@@ -20,7 +20,7 @@ from models.intent import QueryIntent
 from models.query import MovieResult, Provider
 from tools.providers_tool import fetch_providers
 
-_MODEL = "groq/llama-3.3-70b-versatile"
+_MODEL = "groq/openai/gpt-oss-120b"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -121,8 +121,9 @@ async def _synthesise(
             },
             {"role": "user", "content": context},
         ],
-        max_tokens=80,
+        max_tokens=200,
         temperature=0.4,
+        reasoning_effort="low",
     )
 
     return response.choices[0].message.content.strip()
@@ -262,8 +263,9 @@ async def _synthesise_review(
             },
             {"role": "user", "content": "\n".join(context_parts)},
         ],
-        max_tokens=150,
+        max_tokens=350,
         temperature=0.4,
+        reasoning_effort="low",
     )
 
     return response.choices[0].message.content.strip()
