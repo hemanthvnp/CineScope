@@ -7,7 +7,7 @@ import litellm
 
 from models.intent import QueryEntities, QueryIntent
 
-_MODEL = "groq/llama-3.1-8b-instant"
+_MODEL = "groq/openai/gpt-oss-20b"
 
 
 _CLASSIFY_FUNCTION = {
@@ -131,6 +131,7 @@ async def classify_intent(
         tool_choice={"type": "function", "function": {"name": "classify_intent"}},
         max_tokens=512,
         temperature=0,
+        reasoning_effort="low",
     )
 
     message = response.choices[0].message
