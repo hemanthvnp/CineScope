@@ -7,8 +7,9 @@ import MovieCard from "../components/MovieCard"
 import SkeletonRow from "../components/SkeletonRow"
 import "./SearchPage.css"
 
-// Sentence-like queries ("dark korean thrillers after 2015") go to the AI layer; titles and
-// short keywords stay on the fast direct search.
+// Sentence-like queries ("dark korean thrillers after 2015") go to the AI layer first. Shorter
+// queries try the fast keyword search first, and fall through to the AI layer when it finds
+// nothing ("tamil thriller" is not a movie title).
 const AI_MIN_WORDS = 4
 const AI_TIMEOUT_MS = 8000
 const isNaturalLanguage = (q) => q.trim().split(/\s+/).length >= AI_MIN_WORDS
@@ -65,25 +66,30 @@ const SearchPage = () => {
       setError("")
       setAiInterpretation("")
 
-      try {
-        if (page === 1 && isNaturalLanguage(query)) {
-          try {
-            const ai = await aiQuery({
-              q: query,
-              maxResults: 30,
-              timeout: AI_TIMEOUT_MS,
-              filters: { year: yearFilter, genre: genreFilter, language: languageFilter },
-            })
-            if (ai.results?.length) {
-              setResults(ai.results.map(fromAiResult))
-              setTotalResults(ai.results.length)
-              setAiInterpretation(ai.interpreted_as || "")
-              return
-            }
-          } catch (aiError) {
-            console.warn("AI search unavailable, using standard search:", aiError.message)
-          }
+      // Returns true when the AI layer produced results (and they are now on screen)
+      const tryAiSearch = async () => {
+        try {
+          const ai = await aiQuery({
+            q: query,
+            maxResults: 30,
+            timeout: AI_TIMEOUT_MS,
+            filters: { year: yearFilter, genre: genreFilter, language: languageFilter },
+          })
+          if (!ai.results?.length) return false
+          setResults(ai.results.map(fromAiResult))
+          setTotalResults(ai.results.length)
+          setAiInterpretation(ai.interpreted_as || "")
+          return true
+        } catch (aiError) {
+          console.warn("AI search unavailable, using standard search:", aiError.message)
+          return false
         }
+      }
+
+      try {
+        const isFirstPageQuery = page === 1 && query.trim() !== ""
+        const aiFirst = isFirstPageQuery && isNaturalLanguage(query)
+        if (aiFirst && await tryAiSearch()) return
 
         const params = {
           query: query,
@@ -102,6 +108,8 @@ const SearchPage = () => {
           explanation: { reason: `Match for your search`, type: "general" }
         }))
         
+        if (isFirstPageQuery && !aiFirst && mappedResults.length === 0 && await tryAiSearch()) return
+
         if (page === 1) {
           setResults(mappedResults)
         } else {
