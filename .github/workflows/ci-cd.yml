@@ -99,8 +99,8 @@ jobs:
         run: |
           declare -A hooks=(
             [backend]="${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
-            [recommendation]="${{ secrets.RENDER_DEPLOY_HOOK_RECOMMENDATION }}"
-            [ml]="${{ secrets.RENDER_DEPLOY_HOOK_ML }}"
+            [recommendation]="${{ secrets.RENDER_DEPLOY_HOOK_RECOMMENDATION_SERVICE }}"
+            [ml]="${{ secrets.RENDER_DEPLOY_HOOK_ML_SERVICE }}"
             [ai-orchestration]="${{ secrets.RENDER_DEPLOY_HOOK_AI_ORCHESTRATION }}"
             [frontend]="${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}"
           )
