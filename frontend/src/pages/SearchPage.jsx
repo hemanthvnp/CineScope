@@ -2,15 +2,29 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
+import { aiQuery } from "../api/query"
 import MovieCard from "../components/MovieCard"
 import SkeletonRow from "../components/SkeletonRow"
 import "./SearchPage.css"
+
+// Sentence-like queries ("dark korean thrillers after 2015") go to the AI layer; titles and
+// short keywords stay on the fast direct search.
+const AI_MIN_WORDS = 4
+const AI_TIMEOUT_MS = 8000
+const isNaturalLanguage = (q) => q.trim().split(/\s+/).length >= AI_MIN_WORDS
+
+const fromAiResult = (m) => ({
+  ...m,
+  id: m.movie_id,
+  release_date: m.year ? `${m.year}-01-01` : "",
+  explanation: { reason: m.explanation || "Match for your search", type: "general" },
+})
 
 const SearchPage = () => {
   const [searchParams] = useSearchParams()
   const { 
     setSearch, setYear, setGenre, setLanguage, setFilters,
-    search, year, genre, language, genreMap, languageMap 
+    genreMap, languageMap
   } = useSearchFilter()
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(true)
@@ -18,6 +32,7 @@ const SearchPage = () => {
   const [error, setError] = useState("")
   const [totalResults, setTotalResults] = useState(0)
   const [page, setPage] = useState(1)
+  const [aiInterpretation, setAiInterpretation] = useState("")
 
   const query = searchParams.get("q") || ""
   const yearFilter = searchParams.get("year") || ""
@@ -48,8 +63,28 @@ const SearchPage = () => {
       else setLoadingMore(true)
       
       setError("")
+      setAiInterpretation("")
 
       try {
+        if (page === 1 && isNaturalLanguage(query)) {
+          try {
+            const ai = await aiQuery({
+              q: query,
+              maxResults: 30,
+              timeout: AI_TIMEOUT_MS,
+              filters: { year: yearFilter, genre: genreFilter, language: languageFilter },
+            })
+            if (ai.results?.length) {
+              setResults(ai.results.map(fromAiResult))
+              setTotalResults(ai.results.length)
+              setAiInterpretation(ai.interpreted_as || "")
+              return
+            }
+          } catch (aiError) {
+            console.warn("AI search unavailable, using standard search:", aiError.message)
+          }
+        }
+
         const params = {
           query: query,
           page: page
@@ -174,6 +209,7 @@ const SearchPage = () => {
         <p className="search-description">
           Found {totalResults} movies {getSearchDescription()}
         </p>
+        {aiInterpretation && <p className="search-description">Understood as: {aiInterpretation}</p>}
       </div>
 
       <div className="search-results-section">
