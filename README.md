@@ -85,21 +85,34 @@ The pipeline:
 
 4. **Aggregation** — all candidates pool together, get re-scored, providers get fetched for the top N in parallel, final results returned.
 
-Intent classification is rule-based (no LLM). It's fast, free, and deterministic — good enough for a defined set of intents. SBERT embeddings (`all-MiniLM-L6-v2`) power the semantic search component, with a TF-IDF fallback when memory is tight.
+Intent classification uses Groq (`gpt-oss-20b`) through litellm with a forced function call, which returns the intent plus extracted entities. Semantic search is TF-IDF cosine similarity over an in-memory index of popular and trending TMDB movies (`sentence-transformers` is used instead if it is installed; it is left out of the default image to stay within free-tier memory).
+
+### Structured filters
+
+`/api/query` also takes an optional `filters` object, on its own (empty `q`) or combined with a natural-language query. Any single filter or any combination works, and explicit filters override whatever the LLM inferred from the text. Results are always checked against them.
+
+```json
+{ "q": "", "filters": { "genres": ["28", "thriller"], "language": "hi", "era": "Modern", "min_rating": 7, "platforms": ["Netflix"] } }
+```
+
+Supported: `genres` (names or TMDB ids, all must match), `language`, `year`, `year_from`/`year_to`, `era` (Classic, Old, Modern, Recent), `min_rating`, `platforms`, `country`.
 
 ---
 
 ## Tests
 
 ```bash
-pytest services/ml-service/tests/ -v
-# 71 tests, ~1.6s
+pytest services/ml-service/tests/ -v                     # recommender (50 tests)
+cd services/ai-orchestration && pytest tests/ -v         # orchestration (29 tests)
 ```
 
-Three files:
+ML service:
 - `test_evaluator_metrics.py` — Hit Rate, Precision, Recall, MRR, NDCG functions
 - `test_hybrid_scoring.py` — quality score, quality floor, era parsing, strategy selection
-- `test_intent_classifier.py` — all 8 intent types, entity extraction, country detection
+
+AI orchestration:
+- `test_intent_classifier.py` — all 8 intent types and entity extraction (LLM mocked)
+- `test_filters.py` — structured filters: validation, combination, hard filtering, platform matching
 
 The test job runs in CI before Docker build. Build won't trigger if tests fail.
 
@@ -175,7 +188,7 @@ CineScope/
 | Frontend | React 18, Vite, React Router |
 | Gateway | Node.js, Express, JWT, bcrypt, Nodemailer |
 | ML service | Python 3.11, FastAPI, scikit-learn, NumPy, SciPy, PyMongo |
-| AI orchestration | Python 3.11, FastAPI, asyncio, sentence-transformers |
+| AI orchestration | Python 3.11, FastAPI, asyncio, litellm (Groq), scikit-learn |
 | Database | MongoDB Atlas |
 | Movie data | TMDB REST API |
 | Containers | Docker, Docker Compose |

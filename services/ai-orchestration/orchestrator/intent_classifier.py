@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Optional
 
 import litellm
 
 from models.intent import QueryEntities, QueryIntent
+from models.query import QueryFilters
 
 _MODEL = "groq/openai/gpt-oss-20b"
 
+logger = logging.getLogger(__name__)
+
+
+_CONSTRAINED_INTENTS = {"discover", "search", "recommend", "mood_based", "filter_provider"}
 
 _CLASSIFY_FUNCTION = {
     "name": "classify_intent",
@@ -55,6 +61,14 @@ _CLASSIFY_FUNCTION = {
             "year_to": {
                 "type": "integer",
                 "description": "End year of a range; same as year_from for a single year",
+            },
+            "language": {
+                "type": "string",
+                "description": "Original language as ISO 639-1 code if mentioned (e.g. hi for Hindi, ko for Korean, ja for Japanese)",
+            },
+            "min_rating": {
+                "type": "number",
+                "description": "Minimum TMDB rating (0-10) if the user asks for highly rated / above N",
             },
             "platforms": {
                 "type": "array",
@@ -117,10 +131,7 @@ _SYSTEM_PROMPT = (
 )
 
 
-async def classify_intent(
-    query: str,
-    user_context: Optional[dict] = None,
-) -> QueryIntent:
+async def _call_classifier(query: str, temperature: float) -> dict:
     response = await litellm.acompletion(
         model=_MODEL,
         messages=[
@@ -130,15 +141,37 @@ async def classify_intent(
         tools=[{"type": "function", "function": _CLASSIFY_FUNCTION}],
         tool_choice={"type": "function", "function": {"name": "classify_intent"}},
         max_tokens=512,
-        temperature=0,
+        temperature=temperature,
         reasoning_effort="low",
     )
-
     message = response.choices[0].message
     if not message.tool_calls:
         raise RuntimeError(f"litellm returned no function call for query: {query!r}")
+    return json.loads(message.tool_calls[0].function.arguments)
 
-    data: dict = json.loads(message.tool_calls[0].function.arguments)
+
+async def classify_intent(
+    query: str,
+    user_context: Optional[dict] = None,
+) -> QueryIntent:
+    # The model occasionally emits malformed tool-call JSON (Groq "tool_use_failed").
+    # Retry once with a little temperature (temperature 0 would repeat the same output).
+    data: Optional[dict] = None
+    for temperature in (0, 0.3):
+        try:
+            data = await _call_classifier(query, temperature)
+            break
+        except (litellm.BadRequestError, json.JSONDecodeError, RuntimeError) as exc:
+            logger.warning("Intent classification attempt failed (T=%s): %s", temperature, str(exc)[:200])
+
+    if data is None:
+        # Degrade to a plain search instead of failing the request
+        return QueryIntent(
+            primary_intent="search",
+            complexity="simple",
+            interpreted_as=query[:80],
+            requires_personalization=bool(user_context and user_context.get("user_id")),
+        )
 
     entities = QueryEntities(
         seed_movies=data.get("seed_movies") or [],
@@ -151,7 +184,17 @@ async def classify_intent(
         mood=data.get("mood"),
         director=data.get("director"),
         actor=data.get("actor"),
+        language=data.get("language"),
+        min_rating=data.get("min_rating"),
     )
+
+    # "best thriller tamil movies" means Tamil AND thriller: enforce what the user asked for.
+    # find_similar is excluded: genres there are hints around a seed movie, not constraints.
+    if data["primary_intent"] in _CONSTRAINED_INTENTS:
+        entities.hard_filters = bool(
+            entities.genres or entities.language or entities.year_from
+            or entities.year_to or entities.min_rating is not None
+        )
 
     requires_personalization = bool(data.get("requires_personalization"))
     if user_context and user_context.get("user_id"):
@@ -165,6 +208,55 @@ async def classify_intent(
         complexity=data.get("complexity", "medium"),
         interpreted_as=data.get("interpreted_as", query[:80]),
     )
+
+
+def filter_only_intent(filters: Optional[QueryFilters] = None) -> QueryIntent:
+    """No text query: skip the LLM call and treat the filters as a discover request."""
+    return QueryIntent(
+        primary_intent="discover",
+        complexity="medium",
+        interpreted_as="Movies matching the selected filters",
+    )
+
+
+def apply_filters(intent: QueryIntent, filters: Optional[QueryFilters]) -> QueryIntent:
+    """Merge explicit filters into the LLM-extracted intent.
+
+    Explicit filters win over anything the LLM inferred from the text, and any
+    combination of them is enforced as a hard constraint downstream.
+    """
+    if not filters or not filters.is_active():
+        return intent
+
+    e = intent.entities
+    if filters.genres:
+        e.genres = list(filters.genres)
+    if filters.language:
+        e.language = filters.language
+    if filters.min_rating is not None:
+        e.min_rating = filters.min_rating
+    year_from, year_to = filters.year_range()
+    if year_from or year_to:
+        e.year_from, e.year_to = year_from, year_to
+    if filters.platforms:
+        e.platforms = list(filters.platforms)
+        e.streaming_filter = True
+        e.explicit_platforms = True
+    if filters.country:
+        e.country = filters.country
+    e.hard_filters = True
+
+    parts = [
+        ", ".join(filters.genres) if filters.genres else "",
+        f"language {filters.language}" if filters.language else "",
+        f"{year_from}-{year_to}" if year_from and year_to and year_from != year_to
+        else str(year_from or year_to or ""),
+        f"rating >= {filters.min_rating}" if filters.min_rating is not None else "",
+        f"on {', '.join(filters.platforms)}" if filters.platforms else "",
+    ]
+    applied = "; ".join(p for p in parts if p)
+    intent.interpreted_as = f"{intent.interpreted_as} [filters: {applied}]"
+    return intent
 
 
 def classify_intent_sync(query: str, user_context: Optional[dict] = None) -> QueryIntent:

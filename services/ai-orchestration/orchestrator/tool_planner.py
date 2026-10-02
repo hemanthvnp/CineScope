@@ -20,6 +20,7 @@ def build_plan(
 ) -> ExecutionPlan:
     nodes: list[PlanNode] = []
     entities = intent.entities
+    genre_text = " ".join(g for g in entities.genres if not str(g).isdigit())  # ids are meaningless in prompts
     primary = intent.primary_intent
 
     # ── discover ──────────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ def build_plan(
             nodes.append(PlanNode(
                 id="semantic",
                 tool="semantic_search",
-                params={"query": " ".join(entities.genres) + " movies", "k": max_results * 2},
+                params={"query": genre_text + " movies", "k": max_results * 2},
             ))
 
     # ── find_similar ──────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ def build_plan(
             id="semantic",
             tool="semantic_search",
             params={
-                "query": f"movies similar to {seed} {' '.join(entities.genres)}",
+                "query": f"movies similar to {seed} {genre_text}",
                 "k": max_results * 3,
             },
         ))
@@ -167,7 +168,7 @@ def build_plan(
 
     # ── mood_based ────────────────────────────────────────────────────────────
     elif primary == "mood_based":
-        mood_query = f"{entities.mood or ''} {' '.join(entities.genres)} movies".strip()
+        mood_query = f"{entities.mood or ''} {genre_text} movies".strip()
         nodes.append(PlanNode(
             id="semantic",
             tool="semantic_search",
@@ -195,4 +196,44 @@ def build_plan(
         ))
         intent.requires_synthesis = True
 
+    _apply_filters_to_plan(nodes, intent, max_results)
+
     return ExecutionPlan(nodes=nodes, merge_strategy=primary)
+
+
+_FILTERABLE_INTENTS = {"discover", "search", "recommend", "mood_based", "filter_provider", "find_similar"}
+
+
+def _apply_filters_to_plan(nodes: list[PlanNode], intent: QueryIntent, max_results: int) -> None:
+    """Make every candidate-producing intent honour genre/language/year/rating filters.
+
+    Explicit filters (hard_filters) guarantee a filtered tmdb_discover node exists, so
+    the pool is built from matching movies rather than hoping the other tools return some.
+    """
+    e = intent.entities
+    if intent.primary_intent not in _FILTERABLE_INTENTS:
+        return
+
+    filter_params = {
+        "genres": e.genres,
+        "year_from": e.year_from,
+        "year_to": e.year_to,
+        "language": e.language,
+        "min_rating": e.min_rating,
+    }
+    has_filters = bool(e.genres or e.year_from or e.year_to or e.language or e.min_rating is not None)
+    if not has_filters:
+        return
+
+    discover = next((n for n in nodes if n.tool == "tmdb_discover"), None)
+    if discover:
+        discover.params.update({k: v for k, v in filter_params.items() if v})
+    elif e.hard_filters:
+        discover = PlanNode(id="discover", tool="tmdb_discover", params={**filter_params, "limit": max_results * 5})
+        nodes.append(discover)
+    if discover:
+        discover.params["limit"] = max(discover.params.get("limit", 0), max_results * 5)
+
+    if e.hard_filters and intent.primary_intent == "discover":
+        # Unfiltered trending would just be thrown away by the hard filter
+        nodes[:] = [n for n in nodes if n.tool != "tmdb_trending"]

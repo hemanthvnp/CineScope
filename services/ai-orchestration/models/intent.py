@@ -14,6 +14,12 @@ class QueryEntities(BaseModel):
     mood: Optional[str] = None
     director: Optional[str] = None
     actor: Optional[str] = None
+    language: Optional[str] = None
+    min_rating: Optional[float] = None
+    # True when genre/language/year/rating must be enforced on results (explicit filters, or extracted from the query)
+    hard_filters: bool = False
+    # True only for explicit `platforms` filters: LLM-extracted names ("Disney+") are too fuzzy to match on
+    explicit_platforms: bool = False
 
 
 class QueryIntent(BaseModel):
@@ -21,7 +27,6 @@ class QueryIntent(BaseModel):
         "discover", "find_similar", "recommend", "search",
         "filter_provider", "summarize", "mood_based", "lookup"
     ]
-    secondary_intents: List[str] = []
     entities: QueryEntities = QueryEntities()
     requires_personalization: bool = False
     requires_synthesis: bool = False

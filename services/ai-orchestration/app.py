@@ -3,9 +3,9 @@ CineScope AI Orchestration Layer
 POST /api/query  — single intelligent endpoint
 
 Pipeline per request:
-  semantic cache → intent classification (Claude Haiku) →
+  semantic cache → intent classification (Groq via litellm) →
   tool planning → parallel execution (asyncio DAG) →
-  aggregation + provider fetch → optional synthesis (Claude Sonnet) →
+  aggregation + provider fetch → optional synthesis (Groq via litellm) →
   cache write → response
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ from models.query import QueryMeta, QueryRequest, QueryResponse
 from orchestrator.aggregator import aggregate
 from orchestrator.circuit_breaker import all_states
 from orchestrator.execution_engine import ExecutionEngine
-from orchestrator.intent_classifier import classify_intent
+from orchestrator.intent_classifier import apply_filters, classify_intent, filter_only_intent
 from orchestrator.tool_planner import build_plan
 
 _engine = ExecutionEngine()
@@ -74,6 +74,12 @@ app.add_middleware(
 )
 
 
+def _watched_ids(tool_results: dict) -> set:
+    """Movies the user has already watched/rated — don't recommend them again."""
+    profile = tool_results.get("user_data") or {}
+    return {int(i) for i in profile.get("watched_ids", []) if i is not None}
+
+
 # ── /api/query ────────────────────────────────────────────────────────────────
 
 @app.post("/api/query", response_model=QueryResponse)
@@ -86,7 +92,11 @@ async def query_endpoint(
 
     # ── Cache lookup ──────────────────────────────────────────────────────────
     user_segment = "auth" if authorization else "anon"
-    cache_key = make_query_key(request.q, request.locale, user_segment)
+    active_filters = request.filters if request.filters and request.filters.is_active() else None
+    cache_key = make_query_key(
+        request.q, request.locale, user_segment,
+        active_filters.model_dump(exclude_none=True) if active_filters else None,
+    )
 
     cached = await cache_get(cache_key)
     if cached:
@@ -102,7 +112,13 @@ async def query_endpoint(
     if request.userId:
         user_ctx["user_id"] = request.userId
 
-    intent = await classify_intent(request.q, user_ctx or None)
+    if request.q.strip():
+        intent = await classify_intent(request.q, user_ctx or None)
+    else:
+        intent = filter_only_intent(active_filters)   # filters alone — no LLM call needed
+    intent = apply_filters(intent, active_filters)    # explicit filters override LLM-inferred ones
+    if request.context and request.context.mood and not intent.entities.mood:
+        intent.entities.mood = request.context.mood
 
     # ── Tool planning ─────────────────────────────────────────────────────────
     plan = build_plan(
@@ -123,6 +139,8 @@ async def query_endpoint(
         max_results=request.options.max_results,
         include_synthesis=request.options.include_synthesis or intent.requires_synthesis,
         locale=request.locale,
+        include_providers=request.options.include_providers,
+        exclude_ids=_watched_ids(tool_results) if intent.requires_personalization else None,
     )
 
     elapsed_ms = int((time.monotonic() - t_start) * 1_000)

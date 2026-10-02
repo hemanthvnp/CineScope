@@ -33,6 +33,11 @@ jobs:
       - name: Run ML service tests
         run: pytest services/ml-service/tests/ -v --tb=short
 
+      - name: Run AI orchestration tests
+        run: |
+          pip install --quiet httpx fastapi
+          cd services/ai-orchestration && pytest tests/ -v --tb=short
+
   build-and-push:
     needs: test
     name: Build & Push — ${{ matrix.name }}

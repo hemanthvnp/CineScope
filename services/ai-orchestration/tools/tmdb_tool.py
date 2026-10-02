@@ -4,6 +4,7 @@ All functions share a single httpx.AsyncClient kept alive for the process.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,27 @@ def _get_client() -> httpx.AsyncClient:
             limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
         )
     return _client
+
+
+_GENRE_IDS = {
+    "action": 28, "adventure": 12, "animation": 16, "comedy": 35,
+    "crime": 80, "documentary": 99, "drama": 18, "family": 10751,
+    "fantasy": 14, "history": 36, "horror": 27, "music": 10402,
+    "mystery": 9648, "romance": 10749, "sci-fi": 878, "science fiction": 878,
+    "thriller": 53, "war": 10752, "western": 37,
+}
+
+
+def genre_ids(genres: Optional[List[Any]]) -> List[int]:
+    """Genre names or numeric ids (as the filter dropdown sends) → TMDB genre ids."""
+    out: List[int] = []
+    for g in genres or []:
+        s = str(g).strip().lower()
+        if s.isdigit():
+            out.append(int(s))
+        elif s in _GENRE_IDS:
+            out.append(_GENRE_IDS[s])
+    return out
 
 
 def _norm(movie: dict) -> dict:
@@ -60,11 +82,6 @@ async def tmdb_search(params: Dict[str, Any]) -> List[dict]:
     r.raise_for_status()
     results = r.json().get("results", [])
 
-    # Client-side genre filter
-    genre_name = (params.get("genre") or "").lower()
-    if genre_name:
-        results = [m for m in results if genre_name in (m.get("original_title", "") + " " + str(m.get("genre_ids", []))).lower()]
-
     return [_norm(m) for m in results[:limit]]
 
 
@@ -77,19 +94,12 @@ async def tmdb_discover(params: Dict[str, Any]) -> List[dict]:
         "page": 1,
     }
 
-    genres: List[str] = params.get("genres", []) or []
-    if genres:
-        # TMDB needs genre IDs; map common genre names
-        genre_id_map = {
-            "action": 28, "adventure": 12, "animation": 16, "comedy": 35,
-            "crime": 80, "documentary": 99, "drama": 18, "family": 10751,
-            "fantasy": 14, "history": 36, "horror": 27, "music": 10402,
-            "mystery": 9648, "romance": 10749, "sci-fi": 878, "science fiction": 878,
-            "thriller": 53, "war": 10752, "western": 37,
-        }
-        ids = [genre_id_map[g.lower()] for g in genres if g.lower() in genre_id_map]
-        if ids:
-            p["with_genres"] = ",".join(map(str, ids))
+    ids = genre_ids(params.get("genres"))
+    if ids:
+        # "," = AND (movie must have all genres) so combined genre filters intersect
+        p["with_genres"] = ",".join(map(str, ids))
+    if params.get("min_rating") is not None:
+        p["vote_average.gte"] = params["min_rating"]
 
     if params.get("year_from"):
         p["primary_release_date.gte"] = f"{params['year_from']}-01-01"
@@ -98,9 +108,25 @@ async def tmdb_discover(params: Dict[str, Any]) -> List[dict]:
     if params.get("language"):
         p["with_original_language"] = params["language"]
 
-    r = await _get_client().get("/discover/movie", params=p)
-    r.raise_for_status()
-    return [_norm(m) for m in r.json().get("results", [])[:limit]]
+    # TMDB returns 20 per page — fetch enough pages (max 3) to cover `limit`
+    pages = min(3, -(-limit // 20))
+
+    async def _page(n: int) -> List[dict]:
+        for attempt in (1, 2):
+            try:
+                r = await _get_client().get("/discover/movie", params={**p, "page": n})
+                r.raise_for_status()
+                return r.json().get("results", [])
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise
+
+    # One flaky page must not sink the whole search: keep the pages that arrived
+    batches = await asyncio.gather(*(_page(n) for n in range(1, pages + 1)), return_exceptions=True)
+    ok = [b for b in batches if not isinstance(b, BaseException)]
+    if not ok:
+        raise batches[0]
+    return [_norm(m) for batch in ok for m in batch][:limit]
 
 
 async def tmdb_trending(params: Dict[str, Any]) -> List[dict]:
