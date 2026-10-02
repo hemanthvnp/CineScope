@@ -1,14 +1,15 @@
 """
 Unit tests for the intent classifier — litellm.acompletion is mocked so no API key needed.
 Tests verify that classify_intent_sync correctly unpacks tool-call JSON into QueryIntent.
-Run with:  pytest services/ml-service/tests/test_intent_classifier.py -v
+Run with:  pytest services/ai-orchestration/tests/test_intent_classifier.py -v
 """
 import json
 import sys
 import os
+import litellm
 from unittest.mock import AsyncMock, MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../ai-orchestration"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from orchestrator.intent_classifier import classify_intent_sync
 
@@ -148,3 +149,35 @@ class TestInterpretedAs:
                                         interpreted_as="Movies similar to Parasite")):
             intent = classify_intent_sync("Movies like Parasite")
         assert "Parasite" in intent.interpreted_as
+
+
+def test_query_extracted_language_and_genre_become_hard_filters():
+    resp = _fake_response("search", genres=["thriller"], language="ta")
+    with _patch_groq(resp):
+        intent = classify_intent_sync("best thriller tamil movies")
+    assert intent.entities.hard_filters
+    assert intent.entities.language == "ta"
+
+
+def test_find_similar_genres_are_not_hard_filters():
+    resp = _fake_response("find_similar", seed_movies=["Inception"], genres=["sci-fi"])
+    with _patch_groq(resp):
+        intent = classify_intent_sync("movies like Inception")
+    assert not intent.entities.hard_filters
+
+
+def test_retries_once_on_malformed_tool_call_then_succeeds():
+    good = _fake_response("discover", genres=["war"])
+    bad = litellm.BadRequestError("tool_use_failed", model="m", llm_provider="groq")
+    with patch("orchestrator.intent_classifier.litellm.acompletion", AsyncMock(side_effect=[bad, good])):
+        intent = classify_intent_sync("war movies from the 1990s")
+    assert intent.primary_intent == "discover"
+    assert intent.entities.genres == ["war"]
+
+
+def test_falls_back_to_plain_search_when_classifier_keeps_failing():
+    bad = litellm.BadRequestError("tool_use_failed", model="m", llm_provider="groq")
+    with patch("orchestrator.intent_classifier.litellm.acompletion", AsyncMock(side_effect=[bad, bad])):
+        intent = classify_intent_sync("war movies from the 1990s")
+    assert intent.primary_intent == "search"
+    assert intent.interpreted_as == "war movies from the 1990s"

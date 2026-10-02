@@ -16,9 +16,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import litellm
 
-from models.intent import QueryIntent
+from models.intent import QueryEntities, QueryIntent
 from models.query import MovieResult, Provider
 from tools.providers_tool import fetch_providers
+from tools.tmdb_tool import genre_ids
 
 _MODEL = "groq/openai/gpt-oss-120b"
 
@@ -39,6 +40,41 @@ def _extract_movies(value: Any) -> List[dict]:
         if value.get("movie_id") or value.get("id"):
             return [value]
     return []
+
+
+def _matches_filters(movie: dict, e: QueryEntities) -> bool:
+    """Hard genre / language / year / rating check. A field a tool didn't return can't disqualify a movie."""
+    wanted = genre_ids(e.genres)
+    have = movie.get("genre_ids")
+    if wanted and have and not set(wanted) <= set(have):
+        return False
+
+    lang = movie.get("original_language")
+    if e.language and lang and lang != e.language.lower():
+        return False
+
+    raw_date = str(movie.get("release_date") or "")
+    if raw_date[:4].isdigit():
+        year = int(raw_date[:4])
+        if (e.year_from and year < e.year_from) or (e.year_to and year > e.year_to):
+            return False
+
+    if e.min_rating is not None and movie.get("vote_average") is not None:
+        if float(movie["vote_average"]) < e.min_rating:
+            return False
+    return True
+
+
+def _on_platform(providers: List[dict], platforms: List[str]) -> bool:
+    if not providers:
+        return False
+    if not platforms:
+        return True
+    def norm(s: str) -> str:
+        return s.lower().replace("+", " plus").replace(" ", "")
+
+    wanted = [norm(p) for p in platforms]
+    return any(w in norm(p["name"]) or norm(p["name"]) in w for p in providers for w in wanted)
 
 
 def _score(movie: dict) -> float:
@@ -138,6 +174,8 @@ async def aggregate(
     max_results: int = 10,
     include_synthesis: bool = False,
     locale: str = "US",
+    include_providers: bool = True,
+    exclude_ids: Optional[set] = None,
 ) -> Tuple[List[MovieResult], Optional[str]]:
     # ── 1. Collect candidates ─────────────────────────────────────────────────
     candidates: Dict[int, dict] = {}
@@ -164,28 +202,42 @@ async def aggregate(
                 if not existing.get("genres") and movie.get("genres"):
                     existing["genres"] = movie["genres"]
 
+    # Explicit filters (any one or any combination) are enforced on the merged pool,
+    # so tools that ignore filters (semantic search, trending, similar) can't leak non-matches.
+    if exclude_ids:
+        candidates = {mid: m for mid, m in candidates.items() if mid not in exclude_ids}
+
+    if intent.entities.hard_filters:
+        candidates = {
+            mid: m for mid, m in candidates.items() if _matches_filters(m, intent.entities)
+        }
+
     if not candidates:
         return [], None
 
     # ── 2. Rank ───────────────────────────────────────────────────────────────
     ranked = sorted(candidates.values(), key=_score, reverse=True)
 
-    # For filter_provider we need a bigger pool before the provider filter below
-    pool_size = max_results * 5 if intent.primary_intent == "filter_provider" else max_results * 2
+    # Provider filtering needs a bigger pool, since it discards movies afterwards
+    needs_provider_filter = intent.primary_intent == "filter_provider" or intent.entities.explicit_platforms
+    pool_size = max_results * 5 if needs_provider_filter else max_results * 2
     pool = ranked[:pool_size]
 
     # ── 3. Fetch providers for the pool ──────────────────────────────────────
     movie_ids = [int(m.get("movie_id") or m.get("id")) for m in pool]
     country = intent.entities.country or locale
 
-    if intent.options.include_providers if hasattr(intent, "options") else True:
-        provider_map = await fetch_providers(movie_ids, country=country)
-    else:
-        provider_map = {}
+    provider_map = await fetch_providers(movie_ids, country=country) if include_providers else {}
 
     # ── 4. Filter by provider if requested ────────────────────────────────────
-    if intent.primary_intent == "filter_provider":
-        pool = [m for m in pool if provider_map.get(int(m.get("movie_id") or m.get("id")), [])]
+    if needs_provider_filter:
+        pool = [
+            m for m in pool
+            if _on_platform(
+                provider_map.get(int(m.get("movie_id") or m.get("id")), []),
+                intent.entities.platforms if intent.entities.explicit_platforms else [],
+            )
+        ]
 
     # ── 5. Build final MovieResult list ───────────────────────────────────────
     results: List[MovieResult] = []

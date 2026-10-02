@@ -97,10 +97,11 @@ async def cache_set(key: str, value: Any, ttl: int = 300) -> None:
             pass
 
 
-def make_query_key(query: str, locale: str, user_segment: str = "anon") -> str:
+def make_query_key(query: str, locale: str, user_segment: str = "anon", filters: Optional[dict] = None) -> str:
     normalised = query.lower().strip()
+    filter_part = json.dumps(filters, sort_keys=True, default=str) if filters else ""
     digest = hashlib.sha256(
-        f"{normalised}|{locale}|{user_segment}".encode()
+        f"{normalised}|{locale}|{user_segment}|{filter_part}".encode()
     ).hexdigest()[:20]
     return f"q:{digest}"
 
