@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 _TMDB_KEY = os.getenv("TMDB_API_KEY", "")
-_TMDB_BASE = "https://api.themoviedb.org/3"
+_TMDB_BASE = "https://api.tmdb.org/3"
 
 
 async def movie_reviews(params: Dict[str, Any]) -> Optional[dict]:

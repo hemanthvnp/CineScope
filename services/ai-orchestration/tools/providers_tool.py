@@ -12,7 +12,7 @@ from typing import Dict, List
 import httpx
 
 _TMDB_KEY = os.getenv("TMDB_API_KEY", "")
-_TMDB_BASE = "https://api.themoviedb.org/3"
+_TMDB_BASE = "https://api.tmdb.org/3"
 _LOGO_BASE = "https://image.tmdb.org/t/p/original"
 
 

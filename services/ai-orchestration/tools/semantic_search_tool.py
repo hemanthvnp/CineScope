@@ -16,7 +16,7 @@ import httpx
 import numpy as np
 
 _TMDB_KEY = os.getenv("TMDB_API_KEY", "")
-_TMDB_BASE = "https://api.themoviedb.org/3"
+_TMDB_BASE = "https://api.tmdb.org/3"
 
 # Lazy state
 _corpus: List[dict] = []

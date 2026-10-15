@@ -20,7 +20,7 @@ from dataclasses import dataclass, asdict
 import requests
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
-BASE_URL = "https://api.themoviedb.org/3"
+BASE_URL = "https://api.tmdb.org/3"
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_TTL = 3600
 API_RATE_LIMIT = 40

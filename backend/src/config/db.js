@@ -1,6 +1,8 @@
 const mongoose = require("mongoose")
 const dns = require('node:dns');
-dns.setServers(['1.1.1.1', '8.8.8.8']);
+// System resolver first (Docker's DNS in a container), public ones only as a fallback:
+// some networks block outside DNS, and replacing the system resolver broke the SRV lookup there
+dns.setServers([...new Set([...dns.getServers(), '1.1.1.1', '8.8.8.8'])]);
 const RETRY_DELAY_MS = 10000
 const FALLBACK_RETRY_DELAY_MS = 1000
 

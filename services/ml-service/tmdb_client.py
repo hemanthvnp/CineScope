@@ -5,7 +5,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
-BASE_URL = "https://api.themoviedb.org/3"
+BASE_URL = "https://api.tmdb.org/3"
 CACHE_TTL = 3600
 _cache = {}
 

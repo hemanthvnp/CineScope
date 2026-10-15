@@ -11,7 +11,7 @@ load_dotenv()
 @dataclass
 class TMDBConfig:
     api_key: str = field(default_factory=lambda: os.getenv("TMDB_API_KEY", ""))
-    base_url: str = "https://api.themoviedb.org/3"
+    base_url: str = "https://api.tmdb.org/3"
     timeout: int = 30
     max_retries: int = 3
     rate_limit_delay: float = 0.25

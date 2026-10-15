@@ -1,6 +1,6 @@
 const axios = require("axios")
 
-const BASE_URL = "https://api.themoviedb.org/3"
+const BASE_URL = "https://api.tmdb.org/3"
 
 const tmdbApi = axios.create({
   baseURL: BASE_URL,
