@@ -80,13 +80,14 @@ def evaluate(
     Returns:
         Dict with per-K metrics and catalog coverage.
     """
-    from recommender import content_based
-    from recommender.hybrid import _movies_lookup, _models_initialized, initialize_models
+    from recommender import content_based, hybrid
 
     k_values = k_values or [5, 10, 20]
 
-    if not _models_initialized:
-        initialize_models()
+    if not hybrid._models_initialized:
+        hybrid.initialize_models()
+    # Read after the build: a rebuild replaces the dict, so an earlier import would be stale (empty on a cold start)
+    _movies_lookup = hybrid._movies_lookup
 
     if not content_based.is_model_built():
         return {"error": "Content model not ready. Call /refresh first."}

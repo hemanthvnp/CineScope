@@ -5,12 +5,21 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from recommender.hybrid import initialize_models, get_hybrid_recommendations
+from events import create_consumer
+from recommender import hybrid
+from recommender.hybrid import get_hybrid_recommendations, install_models, prepare_models
+from refresher import ModelRefresher
+
+refresher = ModelRefresher(
+    prepare_models, install_models,
+    debounce_s=float(os.getenv("REFRESH_DEBOUNCE_S", "2")),
+)
+consumer = create_consumer(refresher)
 
 
 class RecommendRequest(BaseModel):
@@ -42,21 +51,20 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
-    
-    async def _init_task():
-        try:
-            print("[ml-service] Starting background model initialization...")
-            initialize_models()
-            print("[ml-service] Model initialization complete. Ready to serve recommendations.")
-        except Exception as e:
-            print(f"[ml-service] WARNING: Background model initialization failed: {e}")
-            traceback.print_exc()
 
-    init_task = asyncio.create_task(_init_task())
-    
+    tasks = [asyncio.create_task(refresher.run())]
+    if consumer:
+        tasks.append(asyncio.create_task(consumer.run()))
+        print("[ml-service] Consuming rating events from Redis")
+    else:
+        print("[ml-service] REDIS_URL not set: models refresh via POST /refresh only")
+    # Initial build, in the background so the service starts at once
+    app.state.initial_build = refresher.request()
+
     yield
     print("[ml-service] Shutting down")
-    init_task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(
@@ -82,6 +90,13 @@ async def health_check():
 
 @app.post("/recommend")
 async def recommend(request: RecommendRequest):
+    if not hybrid._models_initialized:
+        # Cold start: wait for the background build rather than let get_hybrid_recommendations
+        # build the models a second time, inline, blocking the event loop while it runs
+        try:
+            await refresher.wait_for(app.state.initial_build)
+        except Exception:
+            pass    # that build failed: get_hybrid_recommendations retries it inline
     try:
         result = get_hybrid_recommendations(
             user_id=request.userId,
@@ -99,15 +114,29 @@ async def recommend(request: RecommendRequest):
 
 
 @app.post("/refresh")
-async def refresh_models():
+async def refresh_models(wait: bool = Query(False, description="Return only once the rebuild has finished")):
+    """Fallback path when the gateway can't publish rating events. Concurrent calls share one rebuild."""
+    if not wait:
+        refresher.request()
+        return {"status": "scheduled"}
     try:
-        initialize_models()
+        await refresher.refresh()
         return {"status": "success", "message": "Models refreshed successfully"}
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to refresh models: {str(e)}"
         )
+
+
+@app.get("/pipeline")
+async def pipeline_stats():
+    """How model refreshes are being triggered, and how many rebuilds the coalescing saved."""
+    return {
+        "mode": "redis-stream" if consumer else "http",
+        "refresher": refresher.stats,
+        "consumer": consumer.stats if consumer else None,
+    }
 
 
 @app.post("/metrics")

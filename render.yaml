@@ -1,4 +1,11 @@
 services:
+  # Rating events stream from the backend to the ML service
+  - type: keyvalue
+    name: cinescope-events
+    plan: free
+    maxmemoryPolicy: noeviction   # never silently drop unread events
+    ipAllowList: []               # only reachable from the services on Render
+
   - type: web
     name: cinescope-recommendation-service
     runtime: image
@@ -36,6 +43,11 @@ services:
         value: "0.25"
       - key: DEBUG
         value: "False"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: cinescope-events
+          property: connectionString
 
   - type: web
     name: cinescope-backend
@@ -74,6 +86,11 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: cinescope-events
+          property: connectionString
 
   - type: web
     name: cinescope-ai-orchestration

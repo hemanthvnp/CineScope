@@ -11,13 +11,12 @@ _index_movie_id = {}
 _is_built = False
 
 
-def build_tfidf_model(
+def fit_tfidf_model(
     movies: List[Dict],
     movie_genre_map: Dict[int, List[int]],
     genre_names: Dict[int, str],
-) -> None:
-    global _tfidf_matrix, _vectorizer, _movie_id_index, _index_movie_id, _is_built
-
+) -> Dict:
+    """Fits the TF-IDF model without touching the live one; install() swaps the result in."""
     documents = []
     movie_ids = []
 
@@ -39,24 +38,30 @@ def build_tfidf_model(
 
     if not documents:
         print("[ml-service] WARNING: No documents to build TF-IDF model")
-        _is_built = False
-        return
+        return {"_is_built": False}
 
-    _vectorizer = TfidfVectorizer(
+    vectorizer = TfidfVectorizer(
         max_features=10000,
         stop_words="english",
         ngram_range=(1, 2),
         min_df=1,
         max_df=0.9
     )
-    _tfidf_matrix = _vectorizer.fit_transform(documents)
+    tfidf_matrix = vectorizer.fit_transform(documents)
 
-    _movie_id_index = {mid: idx for idx, mid in enumerate(movie_ids)}
-    _index_movie_id = {idx: mid for idx, mid in enumerate(movie_ids)}
-
-    _is_built = True
     print(f"[ml-service] TF-IDF model built: {len(documents)} movies, "
-          f"{_tfidf_matrix.shape[1]} features")
+          f"{tfidf_matrix.shape[1]} features")
+    return {
+        "_tfidf_matrix": tfidf_matrix,
+        "_vectorizer": vectorizer,
+        "_movie_id_index": {mid: idx for idx, mid in enumerate(movie_ids)},
+        "_index_movie_id": {idx: mid for idx, mid in enumerate(movie_ids)},
+        "_is_built": True,
+    }
+
+
+def install(state: Dict) -> None:
+    globals().update(state)
 
 
 def get_content_scores(

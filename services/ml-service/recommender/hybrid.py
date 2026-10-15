@@ -29,29 +29,51 @@ _movie_genre_map = {}
 _models_initialized = False
 
 
-def initialize_models() -> None:
-    global _movies_lookup, _genre_names, _genre_name_to_id, _movie_genre_map, _models_initialized
+def prepare_models() -> Dict:
+    """Loads the data and fits both models without touching the live ones.
 
+    Safe to run in a worker thread while requests are being served; install_models()
+    then swaps everything in at once.
+    """
     print("[ml-service] Initializing recommendation models...")
 
     movies = get_all_movies()
     all_ratings = get_all_user_ratings()
-    _genre_names = get_all_genres()
-    _genre_name_to_id = {name.lower(): gid for gid, name in _genre_names.items()}
+    genre_names = get_all_genres()
 
-    _movies_lookup = {}
-    _movie_genre_map = {}
+    movies_lookup = {}
+    movie_genre_map = {}
     for m in movies:
         mid = m["movie_id"]
-        _movies_lookup[mid] = m
-        _movie_genre_map[mid] = m.get("genre_ids", [])
+        movies_lookup[mid] = m
+        movie_genre_map[mid] = m.get("genre_ids", [])
 
-    content_based.build_tfidf_model(movies, _movie_genre_map, _genre_names)
-    collaborative.build_svd_model(all_ratings)
-
-    _models_initialized = True
+    snapshot = {
+        "hybrid": {
+            "_movies_lookup": movies_lookup,
+            "_genre_names": genre_names,
+            "_genre_name_to_id": {name.lower(): gid for gid, name in genre_names.items()},
+            "_movie_genre_map": movie_genre_map,
+            "_models_initialized": True,
+        },
+        "content": content_based.fit_tfidf_model(movies, movie_genre_map, genre_names),
+        "collab": collaborative.fit_svd_model(all_ratings),
+    }
     print(f"[ml-service] Models initialized. {len(movies)} movies, "
-          f"{len(_genre_names)} genres, {len(all_ratings)} ratings")
+          f"{len(genre_names)} genres, {len(all_ratings)} ratings")
+    return snapshot
+
+
+def install_models(snapshot: Dict) -> None:
+    """Swaps freshly fitted models in. Call it on the event loop thread: requests are served
+    there too, so none of them can run between the three swaps and see a mix of old and new."""
+    content_based.install(snapshot["content"])
+    collaborative.install(snapshot["collab"])
+    globals().update(snapshot["hybrid"])
+
+
+def initialize_models() -> None:
+    install_models(prepare_models())
 
 
 def _parse_era(era_str):

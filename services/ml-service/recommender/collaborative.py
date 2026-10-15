@@ -13,31 +13,26 @@ N_COMPONENTS = 20
 MIN_RATINGS = 2
 
 
-def build_svd_model(all_ratings: List[Dict]) -> None:
-    global _predicted_matrix, _user_index, _movie_index, _index_movie, _is_built
-
+def fit_svd_model(all_ratings: List[Dict]) -> Dict:
+    """Fits the SVD model without touching the live one; install() swaps the result in."""
     if len(all_ratings) < MIN_RATINGS:
         print(f"[ml-service] SVD: Not enough ratings ({len(all_ratings)}/{MIN_RATINGS}). "
               "Collaborative filtering disabled.")
-        _is_built = False
-        return
+        return {"_is_built": False}
 
     unique_users = sorted(set(r["user_id"] for r in all_ratings))
     unique_movies = sorted(set(r["movie_id"] for r in all_ratings))
 
-    _user_index = {uid: idx for idx, uid in enumerate(unique_users)}
-    _movie_index = {mid: idx for idx, mid in enumerate(unique_movies)}
-    _index_movie = {idx: mid for mid, idx in _movie_index.items()}
+    user_index = {uid: idx for idx, uid in enumerate(unique_users)}
+    movie_index = {mid: idx for idx, mid in enumerate(unique_movies)}
 
     n_users = len(unique_users)
     n_movies = len(unique_movies)
 
     rows, cols, data = [], [], []
     for r in all_ratings:
-        uid_idx = _user_index[r["user_id"]]
-        mid_idx = _movie_index[r["movie_id"]]
-        rows.append(uid_idx)
-        cols.append(mid_idx)
+        rows.append(user_index[r["user_id"]])
+        cols.append(movie_index[r["movie_id"]])
         data.append(r["rating"])
 
     rating_matrix = csr_matrix(
@@ -48,18 +43,25 @@ def build_svd_model(all_ratings: List[Dict]) -> None:
     n_components = min(N_COMPONENTS, n_users - 1, n_movies - 1)
     if n_components < 1:
         print("[ml-service] SVD: Matrix too small for decomposition")
-        _is_built = False
-        return
+        return {"_is_built": False}
 
     svd = TruncatedSVD(n_components=n_components, random_state=42)
     user_factors = svd.fit_transform(rating_matrix)
     movie_factors = svd.components_
 
-    _predicted_matrix = np.dot(user_factors, movie_factors)
-
-    _is_built = True
     print(f"[ml-service] SVD model built: {n_users} users × {n_movies} movies, "
           f"{n_components} latent factors, {len(all_ratings)} ratings")
+    return {
+        "_predicted_matrix": np.dot(user_factors, movie_factors),
+        "_user_index": user_index,
+        "_movie_index": movie_index,
+        "_index_movie": {idx: mid for mid, idx in movie_index.items()},
+        "_is_built": True,
+    }
+
+
+def install(state: Dict) -> None:
+    globals().update(state)
 
 
 def get_collaborative_scores(

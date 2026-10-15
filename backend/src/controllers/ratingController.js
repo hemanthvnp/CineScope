@@ -1,9 +1,17 @@
 const Rating = require("../models/Rating")
 const axios = require("axios")
+const eventBus = require("../services/eventBus")
 
 const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || "http://localhost:5001"
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"
 
+// Tell the ML service its models are stale: a stream event when Redis is up, else a direct call
+const notifyRatingChange = async (type, fields) => {
+  if (await eventBus.publish(type, fields)) return
+  axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch((err) => {
+    console.warn("ML model refresh failed (non-fatal):", err.message)
+  })
+}
 
 const submitRating = async (req, res) => {
   try {
@@ -35,9 +43,7 @@ const submitRating = async (req, res) => {
       console.warn("Failed to sync rating to recommendation service:", syncError.message)
     }
 
-    axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch((err) => {
-      console.warn("ML model refresh failed (non-fatal):", err.message)
-    })
+    notifyRatingChange("rating.created", { userId, movieId, rating })
 
     return res.status(200).json({
       message: "Rating submitted successfully.",
@@ -78,7 +84,7 @@ const deleteRating = async (req, res) => {
       console.warn("Failed to sync rating removal to recommendation service:", syncError.message)
     }
 
-    axios.post(`${ML_SERVICE_URL}/refresh`, {}, { timeout: 1000 }).catch(() => {})
+    notifyRatingChange("rating.deleted", { userId, movieId })
 
     return res.status(200).json({ message: "Rating removed." })
   } catch (error) {
