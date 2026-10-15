@@ -86,6 +86,9 @@ function Navbar() {
             <Link to="/home" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Home
             </Link>
+            <Link to="/query" className="side-menu-link" onClick={() => setMenuOpen(false)}>
+              Ask AI
+            </Link>
 
             <Link to="/watchlist" className="side-menu-link" onClick={() => setMenuOpen(false)}>
               Watchlist

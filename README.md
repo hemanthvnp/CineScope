@@ -18,8 +18,10 @@ API Gateway  :5000  ──── auth, movie search, ratings
     │
     ├── ML Service        :8000  ── TF-IDF + SVD recommendations
     ├── Rec Service       :5001  ── genre-based fallback
-    └── AI Orchestration  :9000  ── POST /api/query
-    
+    └── AI Orchestration  :9000  ── POST /api/query (+ /stream)
+
+Gateway ──rating events──▶ Redis Stream ──consumer group──▶ ML Service
+
 All backed by MongoDB Atlas + TMDB API
 ```
 
@@ -56,6 +58,17 @@ quality = 0.60 × (vote_avg / 10)
 ```
 
 Non-English films use a relaxed vote_count floor (30 instead of 80). The standard threshold was filtering out most of the Indian and Korean cinema catalog — valid movies from smaller markets genuinely have fewer TMDB votes.
+
+### Keeping the models fresh: rating events
+
+Both models are rebuilt from MongoDB whenever ratings change. The gateway doesn't call the ML service for that; after writing a rating it publishes a `rating.created` / `rating.deleted` event to a Redis Stream (`cinescope:ratings`, capped at ~1000 entries), and the ML service consumes the stream through a consumer group:
+
+- **Coalesced rebuilds.** An event only marks the models stale. A single worker waits a short debounce (`REFRESH_DEBOUNCE_S`, default 2s) and rebuilds once for everything that arrived, including events read while a rebuild was already pending. Before this, every rating triggered its own rebuild.
+- **Off the event loop.** Loading and fitting run in a worker thread; the fitted models are swapped in on the event loop, where requests are served, so no request sees half-old, half-new state. The rebuild used to block the whole service while it ran.
+- **At-least-once delivery.** Events are `XACK`ed only after the rebuild that includes them finishes. Events left pending by a crash are read again on restart, and ones abandoned by a previous instance (a redeploy changes the hostname) are claimed with `XAUTOCLAIM`.
+- **Graceful fallback.** Without `REDIS_URL`, or while Redis is unreachable, the gateway falls back to `POST /refresh` on the ML service.
+
+`GET /pipeline` on the ML service shows the mode, request and rebuild counts, and consumer stats.
 
 ### Offline evaluation
 
@@ -97,22 +110,44 @@ Intent classification uses Groq (`gpt-oss-20b`) through litellm with a forced fu
 
 Supported: `genres` (names or TMDB ids, all must match), `language`, `year`, `year_from`/`year_to`, `era` (Classic, Old, Modern, Recent), `min_rating`, `platforms`, `country`.
 
+### Conversations
+
+Every response carries a `conversation` object: what the turn resolved to (intent, constraints) and the movies shown so far. Send it back with the next message to refine the search:
+
+```
+"90s crime movies"                           → discover: crime, 1990–1999
+"in hindi"                                   → + language: hi
+"actually any language is fine, only on Netflix" → − language, + Netflix (enforced)
+"show me more"                               → same search, excluding the movies already shown
+```
+
+The classifier gets the previous search as context and reports whether the message refines it, which constraints it drops, and whether it wants new results. Anything the LLM leaves out is carried over from the previous turn, so a model that forgets a constraint can't silently widen the search. If the LLM is down, the rule-based parser still applies filter-only follow-ups ("in hindi", "only on netflix", "show me more").
+
+The state lives in the client, not the server: any instance can answer any turn, and a cold start on the free tier doesn't lose the conversation.
+
+### Streaming
+
+`POST /api/query/stream` runs the same pipeline and sends each stage as a Server-Sent Event as soon as it's ready: `intent` → `preview` (ranked results, before streaming providers are fetched) → `results` → `synthesis` → `done` (the full response). When the provider fetch can't change which movies are shown, the LLM synthesis runs alongside it instead of after it. The Query Lab page renders each stage as it arrives.
+
 ---
 
 ## Tests
 
 ```bash
-pytest services/ml-service/tests/ -v                     # recommender (50 tests)
-cd services/ai-orchestration && pytest tests/ -v         # orchestration (29 tests)
+pytest services/ml-service/tests/ -v                     # recommender (60 tests)
+cd services/ai-orchestration && pytest tests/ -v         # orchestration (89 tests)
 ```
 
 ML service:
 - `test_evaluator_metrics.py` — Hit Rate, Precision, Recall, MRR, NDCG functions
 - `test_hybrid_scoring.py` — quality score, quality floor, era parsing, strategy selection
+- `test_rating_events.py` — rebuild coalescing, off-loop fitting, ack-after-rebuild, crash recovery (Redis faked)
 
 AI orchestration:
 - `test_intent_classifier.py` — all 8 intent types and entity extraction (LLM mocked)
 - `test_filters.py` — structured filters: validation, combination, hard filtering, platform matching
+- `test_llm_fallback.py`, `test_circuit_breaker.py`, `test_speculation_and_cache.py` — resilience and caching
+- `test_conversation.py` — follow-up merging, LLM-down follow-ups, "show me more", SSE event order
 
 The test job runs in CI before Docker build. Build won't trigger if tests fail.
 
@@ -147,7 +182,9 @@ cd backend && npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
-Or just: `docker compose up --build`
+Optional: `docker run -p 6379:6379 redis:7-alpine` and set `REDIS_URL=redis://localhost:6379` for the backend and ML service to use rating events instead of direct refresh calls.
+
+Or just: `docker compose up --build` (includes Redis)
 
 ---
 
@@ -190,6 +227,7 @@ CineScope/
 | ML service | Python 3.11, FastAPI, scikit-learn, NumPy, SciPy, PyMongo |
 | AI orchestration | Python 3.11, FastAPI, asyncio, litellm (Groq), scikit-learn |
 | Database | MongoDB Atlas |
+| Messaging | Redis Streams (consumer groups) |
 | Movie data | TMDB REST API |
 | Containers | Docker, Docker Compose |
 | CI/CD | GitHub Actions → GHCR → Render.com |

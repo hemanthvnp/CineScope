@@ -10,6 +10,18 @@ Rules:
 from __future__ import annotations
 
 from models.intent import ExecutionPlan, PlanNode, QueryIntent
+from tools.tmdb_tool import _GENRE_IDS, genre_ids
+
+_GENRE_NAMES: dict[int, str] = {}
+for _name, _gid in _GENRE_IDS.items():
+    _GENRE_NAMES.setdefault(_gid, _name)
+
+
+def _genre_text(genres: list) -> str:
+    """Genres as prompt text in one spelling and order ("Science Fiction", "sci-fi" → "sci-fi")."""
+    names = {_GENRE_NAMES.get(gid) for gid in genre_ids(genres)}
+    names |= {str(g).lower() for g in genres if not str(g).isdigit() and not genre_ids([g])}
+    return " ".join(sorted(n for n in names if n))
 
 
 def build_plan(
@@ -20,7 +32,7 @@ def build_plan(
 ) -> ExecutionPlan:
     nodes: list[PlanNode] = []
     entities = intent.entities
-    genre_text = " ".join(g for g in entities.genres if not str(g).isdigit())  # ids are meaningless in prompts
+    genre_text = _genre_text(entities.genres)
     primary = intent.primary_intent
 
     # ── discover ──────────────────────────────────────────────────────────────
@@ -49,12 +61,12 @@ def build_plan(
 
     # ── find_similar ──────────────────────────────────────────────────────────
     elif primary == "find_similar":
-        seed = entities.seed_movies[0] if entities.seed_movies else ""
-        # Resolve seed movie → get TMDB ID
+        seed = entities.seed_movies[0].strip() if entities.seed_movies else ""
+        # Resolve seed movie → get TMDB ID (TMDB search ignores case; lowercase keeps the cache key stable)
         nodes.append(PlanNode(
             id="resolve_seed",
             tool="tmdb_search",
-            params={"query": seed, "limit": 1},
+            params={"query": seed.lower(), "limit": 1},
         ))
         # TMDB's own "similar" endpoint (needs resolve_seed result)
         nodes.append(PlanNode(
@@ -100,18 +112,31 @@ def build_plan(
         ))
 
     # ── search ────────────────────────────────────────────────────────────────
+    elif primary == "search" and (entities.director or entities.actor):
+        # Only their filmography: semantic search or trending would add unrelated popular
+        # movies, and those outrank the person's own films in the merged pool
+        role = "director" if entities.director else "actor"
+        nodes.append(PlanNode(
+            id="person",
+            tool="tmdb_person_movies",
+            params={
+                # Lowercase keeps the cache key stable, as for resolve_seed
+                "name": (entities.director or entities.actor).strip().lower(),
+                "role": role,
+                "limit": max_results * 3,
+            },
+        ))
+
     elif primary == "search":
         search_q = intent.interpreted_as
-        if entities.director:
-            search_q = f"{entities.director} movies"
-        elif entities.actor:
-            search_q = f"{entities.actor} movies"
         nodes.append(PlanNode(
             id="tmdb_search",
             tool="tmdb_search",
             params={
                 "query": search_q,
-                "year": entities.year_from,
+                # TMDB's `year` is one exact year: passing the start of a range ("batman movies
+                # from the 90s" → 1990) would drop everything released later in it
+                "year": entities.year_from if entities.year_from == entities.year_to else None,
                 "limit": max_results * 2,
             },
         ))
@@ -214,15 +239,23 @@ def _apply_filters_to_plan(nodes: list[PlanNode], intent: QueryIntent, max_resul
     if intent.primary_intent not in _FILTERABLE_INTENTS:
         return
 
+    # Canonical form ("Sci-Fi" / "science fiction" / "878" → [878], 8 → 8.0) so equivalent
+    # queries produce identical params, and therefore share tool-cache entries
     filter_params = {
-        "genres": e.genres,
+        "genres": sorted(set(genre_ids(e.genres))),
         "year_from": e.year_from,
         "year_to": e.year_to,
-        "language": e.language,
-        "min_rating": e.min_rating,
+        "language": e.language.lower() if e.language else None,
+        "min_rating": float(e.min_rating) if e.min_rating is not None else None,
     }
     has_filters = bool(e.genres or e.year_from or e.year_to or e.language or e.min_rating is not None)
     if not has_filters:
+        return
+
+    person = next((n for n in nodes if n.tool == "tmdb_person_movies"), None)
+    if person:
+        # Filter the filmography itself; a filtered discover would add other people's movies
+        person.params.update({k: v for k, v in filter_params.items() if v})
         return
 
     discover = next((n for n in nodes if n.tool == "tmdb_discover"), None)

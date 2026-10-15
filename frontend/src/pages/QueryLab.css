@@ -279,3 +279,97 @@
   margin-top: .5rem;
   white-space: pre;
 }
+
+/* ── Conversation ────────────────────────────────────────────── */
+.ql-new-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  font-size: .8rem;
+  padding: .35rem .8rem;
+  transition: border-color .2s, color .2s;
+}
+.ql-new-btn:hover { border-color: #4f8ef7; color: #e2e8f0; }
+
+.ql-thread { display: flex; flex-direction: column; gap: 2rem; margin-bottom: 1.5rem; }
+.ql-turn .ql-results { margin-top: .75rem; }
+
+.ql-user-msg {
+  align-self: flex-end;
+  margin-left: auto;
+  width: fit-content;
+  max-width: 75%;
+  background: linear-gradient(135deg, rgba(79,142,247,.18), rgba(168,85,247,.18));
+  border: 1px solid rgba(79,142,247,.35);
+  border-radius: 14px 14px 4px 14px;
+  font-size: .92rem;
+  padding: .55rem .9rem;
+  overflow-wrap: anywhere;
+}
+
+.ql-status {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--text-muted, #94a3b8);
+  font-size: .85rem;
+}
+
+.ql-spinner-sm {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-width: 2px;
+  border-color: rgba(148,163,184,.3);
+  border-top-color: #94a3b8;
+  vertical-align: -1px;
+}
+
+.ql-followup-badge,
+.ql-degraded-badge {
+  border-radius: 5px;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .2rem .5rem;
+}
+.ql-followup-badge {
+  background: rgba(168,85,247,.15);
+  border: 1px solid rgba(168,85,247,.4);
+  color: #d8b4fe;
+}
+.ql-degraded-badge {
+  background: rgba(245,158,11,.15);
+  border: 1px solid rgba(245,158,11,.4);
+  color: #fcd34d;
+}
+
+.ql-synthesis-pending { color: var(--text-muted, #94a3b8); font-style: italic; }
+
+.ql-followups { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ql-followups-label { font-size: .78rem; font-weight: 600; color: #94a3b8; margin-right: .25rem; }
+
+/* Skeletons while a stage is still running */
+.ql-skeleton-card { cursor: default; pointer-events: none; }
+.ql-shimmer {
+  display: block;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(148,163,184,.08) 25%, rgba(148,163,184,.18) 50%, rgba(148,163,184,.08) 75%);
+  background-size: 200% 100%;
+  animation: ql-shimmer 1.2s ease-in-out infinite;
+}
+.ql-shimmer-poster    { width: 100%; aspect-ratio: 2/3; border-radius: 0; }
+.ql-shimmer-line      { height: .7rem; width: 85%; }
+.ql-shimmer-line.short{ width: 45%; }
+.ql-shimmer-providers { height: 20px; width: 64px; }
+@keyframes ql-shimmer { to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ql-shimmer { animation: none; }
+}
+
+@media (max-width: 600px) {
+  .ql-user-msg { max-width: 90%; }
+  .ql-meta-right { margin-left: 0; }
+}

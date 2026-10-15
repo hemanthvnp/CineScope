@@ -72,9 +72,10 @@ class CircuitBreaker:
             else:
                 if self._state == State.HALF_OPEN:
                     self._state = State.CLOSED
-                    self._failure_count = 0
                     self._opened_at = None
                     print(f"[cb:{self.name}] → CLOSED (recovered)")
+                # Only consecutive failures count: sporadic ones over hours must not trip it
+                self._failure_count = 0
         return False  # never suppress exceptions
 
     # ── Introspection ─────────────────────────────────────────────────────────

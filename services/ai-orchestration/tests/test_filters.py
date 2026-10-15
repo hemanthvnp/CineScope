@@ -75,3 +75,15 @@ def test_platform_matching():
     assert not _on_platform([{"name": "Netflix"}], ["Prime Video"])
     assert _on_platform([{"name": "Netflix"}], [])
     assert not _on_platform([], ["Netflix"])
+
+
+def test_search_passes_tmdb_an_exact_year_only():
+    # TMDB's `year` is one exact year, so a decade must not become "1990 only"
+    def search_year(year_from, year_to):
+        intent = QueryIntent(primary_intent="search", interpreted_as="batman")
+        intent.entities.year_from, intent.entities.year_to = year_from, year_to
+        node = next(n for n in build_plan(intent).nodes if n.tool == "tmdb_search")
+        return node.params["year"]
+
+    assert search_year(1990, 1999) is None
+    assert search_year(2014, 2014) == 2014

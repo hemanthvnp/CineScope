@@ -7,12 +7,14 @@ Steps:
   3. Score and rank with a composite formula.
   4. Fetch streaming providers for the top-N movies (parallel).
   5. If intent is filter_provider, keep only movies with providers.
-  6. Optionally synthesise a natural-language summary.
+  6. Optionally synthesise a natural-language summary (alongside step 4 when step 5 is a no-op).
+
+aggregate_stream() yields each stage as it completes; aggregate() returns the end result.
 """
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import litellm
 
@@ -167,17 +169,13 @@ async def _synthesise(
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 
-async def aggregate(
+def _candidate_pool(
     tool_results: Dict[str, Any],
     intent: QueryIntent,
-    original_query: str,
-    max_results: int = 10,
-    include_synthesis: bool = False,
-    locale: str = "US",
-    include_providers: bool = True,
-    exclude_ids: Optional[set] = None,
-) -> Tuple[List[MovieResult], Optional[str]]:
-    # ── 1. Collect candidates ─────────────────────────────────────────────────
+    max_results: int,
+    exclude_ids: Optional[set],
+) -> List[dict]:
+    """Steps 1–2: merge every tool's movies into one pool, enforce filters, rank."""
     candidates: Dict[int, dict] = {}
 
     for node_id, value in tool_results.items():
@@ -212,25 +210,22 @@ async def aggregate(
             mid: m for mid, m in candidates.items() if _matches_filters(m, intent.entities)
         }
 
-    if not candidates:
-        return [], None
-
-    # ── 2. Rank ───────────────────────────────────────────────────────────────
     ranked = sorted(candidates.values(), key=_score, reverse=True)
 
     # Provider filtering needs a bigger pool, since it discards movies afterwards
-    needs_provider_filter = intent.primary_intent == "filter_provider" or intent.entities.explicit_platforms
-    pool_size = max_results * 5 if needs_provider_filter else max_results * 2
-    pool = ranked[:pool_size]
+    pool_size = max_results * 5 if _needs_provider_filter(intent) else max_results * 2
+    return ranked[:pool_size]
 
-    # ── 3. Fetch providers for the pool ──────────────────────────────────────
-    movie_ids = [int(m.get("movie_id") or m.get("id")) for m in pool]
-    country = intent.entities.country or locale
 
-    provider_map = await fetch_providers(movie_ids, country=country) if include_providers else {}
+def _needs_provider_filter(intent: QueryIntent) -> bool:
+    return intent.primary_intent == "filter_provider" or intent.entities.explicit_platforms
 
-    # ── 4. Filter by provider if requested ────────────────────────────────────
-    if needs_provider_filter:
+
+def _build_results(
+    pool: List[dict], provider_map: Dict[int, List[dict]], intent: QueryIntent, max_results: int,
+) -> List[MovieResult]:
+    """Steps 4–5: drop movies not on the requested platforms, then build the final list."""
+    if _needs_provider_filter(intent):
         pool = [
             m for m in pool
             if _on_platform(
@@ -239,7 +234,6 @@ async def aggregate(
             )
         ]
 
-    # ── 5. Build final MovieResult list ───────────────────────────────────────
     results: List[MovieResult] = []
     for movie in pool:
         mid = int(movie.get("movie_id") or movie.get("id"))
@@ -248,16 +242,104 @@ async def aggregate(
             results.append(mr)
         if len(results) >= max_results:
             break
+    return results
 
-    # ── 6. Synthesise ─────────────────────────────────────────────────────────
+
+async def _synthesis(
+    results: List[MovieResult],
+    tool_results: Dict[str, Any],
+    intent: QueryIntent,
+    original_query: str,
+    include_synthesis: bool,
+) -> Optional[str]:
+    """Step 6. The results stand on their own: if the LLM is rate-limited or down, return them without it."""
+    try:
+        if intent.primary_intent in ("summarize", "lookup"):
+            reviews_data = tool_results.get("reviews")
+            details_data = tool_results.get("movie_details")
+            return await _synthesise_review(reviews_data, details_data, original_query)
+        if include_synthesis and results:
+            return await _synthesise(results, original_query, intent.interpreted_as)
+    except Exception as exc:
+        print(f"[aggregator] synthesis failed, returning results without it: {str(exc)[:200]}")
+    return None
+
+
+async def aggregate_stream(
+    tool_results: Dict[str, Any],
+    intent: QueryIntent,
+    original_query: str,
+    max_results: int = 10,
+    include_synthesis: bool = False,
+    locale: str = "US",
+    include_providers: bool = True,
+    exclude_ids: Optional[set] = None,
+) -> AsyncIterator[Tuple[str, Any]]:
+    """Aggregation as it progresses, for streaming:
+
+      ("preview", results)   — ranked results before providers are known; only sent when the
+                               provider fetch can't change which movies are shown
+      ("results", results)   — the final results
+      ("synthesis", text)    — the LLM summary, or None
+
+    When the provider fetch won't change the results, the synthesis runs alongside it
+    instead of after it: it only needs the titles.
+    """
+    pool = _candidate_pool(tool_results, intent, max_results, exclude_ids)
+    if not pool:
+        yield "results", []
+        yield "synthesis", None
+        return
+
+    synthesis_task: Optional[asyncio.Task] = None
+    try:
+        if not _needs_provider_filter(intent):
+            preview = _build_results(pool, {}, intent, max_results)
+            if include_providers:
+                yield "preview", preview
+            synthesis_task = asyncio.create_task(
+                _synthesis(preview, tool_results, intent, original_query, include_synthesis)
+            )
+
+        # ── 3. Fetch providers for the pool ──────────────────────────────────
+        provider_map: Dict[int, List[dict]] = {}
+        if include_providers:
+            movie_ids = [int(m.get("movie_id") or m.get("id")) for m in pool]
+            provider_map = await fetch_providers(movie_ids, country=intent.entities.country or locale)
+
+        results = _build_results(pool, provider_map, intent, max_results)
+        yield "results", results
+
+        if synthesis_task is None:
+            synthesis_task = asyncio.create_task(
+                _synthesis(results, tool_results, intent, original_query, include_synthesis)
+            )
+        yield "synthesis", await synthesis_task
+    finally:
+        if synthesis_task and not synthesis_task.done():
+            synthesis_task.cancel()     # the client went away mid-stream
+
+
+async def aggregate(
+    tool_results: Dict[str, Any],
+    intent: QueryIntent,
+    original_query: str,
+    max_results: int = 10,
+    include_synthesis: bool = False,
+    locale: str = "US",
+    include_providers: bool = True,
+    exclude_ids: Optional[set] = None,
+) -> Tuple[List[MovieResult], Optional[str]]:
+    results: List[MovieResult] = []
     synthesis: Optional[str] = None
-    if intent.primary_intent in ("summarize", "lookup"):
-        reviews_data = tool_results.get("reviews")
-        details_data = tool_results.get("movie_details")
-        synthesis = await _synthesise_review(reviews_data, details_data, original_query)
-    elif include_synthesis and results:
-        synthesis = await _synthesise(results, original_query, intent.interpreted_as)
-
+    async for stage, value in aggregate_stream(
+        tool_results, intent, original_query, max_results, include_synthesis,
+        locale, include_providers, exclude_ids,
+    ):
+        if stage == "results":
+            results = value
+        elif stage == "synthesis":
+            synthesis = value
     return results, synthesis
 
 

@@ -2,6 +2,11 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel
 
+IntentName = Literal[
+    "discover", "find_similar", "recommend", "search",
+    "filter_provider", "summarize", "mood_based", "lookup"
+]
+
 
 class QueryEntities(BaseModel):
     seed_movies: List[str] = []
@@ -23,15 +28,18 @@ class QueryEntities(BaseModel):
 
 
 class QueryIntent(BaseModel):
-    primary_intent: Literal[
-        "discover", "find_similar", "recommend", "search",
-        "filter_provider", "summarize", "mood_based", "lookup"
-    ]
+    primary_intent: IntentName
     entities: QueryEntities = QueryEntities()
     requires_personalization: bool = False
     requires_synthesis: bool = False
     complexity: Literal["simple", "medium", "complex"] = "medium"
     interpreted_as: str = ""
+    # True when the LLM was unavailable and the intent came from the rule-based fallback
+    degraded: bool = False
+    # Conversational follow-ups: this query refined the previous one ("only on Netflix"),
+    # and/or asked for results other than the ones already shown ("show me more")
+    refines_previous: bool = False
+    exclude_shown: bool = False
 
 
 class PlanNode(BaseModel):

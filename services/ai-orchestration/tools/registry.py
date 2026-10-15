@@ -11,6 +11,7 @@ from tools.tmdb_tool import (
     tmdb_trending,
     tmdb_movie_details,
     tmdb_similar,
+    tmdb_person_movies,
 )
 from tools.ml_recommend_tool import ml_recommend
 from tools.semantic_search_tool import semantic_search
@@ -47,6 +48,12 @@ TOOL_REGISTRY: dict = {
         "timeout_ms": 5_000,
         "circuit_breaker": "tmdb",
         "cache_ttl": 1_800,
+    },
+    "tmdb_person_movies": {
+        "fn": tmdb_person_movies,
+        "timeout_ms": 8_000,        # two sequential calls: find the person, then their credits
+        "circuit_breaker": "tmdb",
+        "cache_ttl": 3_600,
     },
     "ml_recommend": {
         "fn": ml_recommend,

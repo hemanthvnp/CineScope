@@ -9,6 +9,7 @@ Algorithm:
 
 Each node call:
   • checks the tool-level cache first
+  • joins an identical call already in flight (e.g. a speculative prefetch) instead of repeating it
   • wraps the tool fn in a circuit breaker
   • enforces a per-tool timeout
   • injects resolved dependency results into params under `_dep_<node_id>` keys
@@ -18,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from cache.semantic_cache import cache_get, cache_set, make_tool_key
 from models.intent import ExecutionPlan, PlanNode
@@ -27,6 +28,18 @@ from tools.registry import TOOL_REGISTRY
 
 
 class ExecutionEngine:
+
+    def __init__(self) -> None:
+        self._inflight: Dict[str, asyncio.Task] = {}   # tool cache key → running call
+        self._background: set[asyncio.Task] = set()    # keeps prefetch tasks from being GC'd
+
+    def prefetch(self, plan: Optional[ExecutionPlan]) -> None:
+        """Run a speculative plan in the background; its results land in the tool cache."""
+        if not plan or not plan.nodes:
+            return
+        task = asyncio.create_task(self.run(plan))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     async def run(self, plan: ExecutionPlan) -> Dict[str, Any]:
         results: Dict[str, Any] = {}
@@ -117,6 +130,16 @@ class ExecutionEngine:
         if cached is not None:
             return cached
 
+        # Identical call already running (a prefetch, or a concurrent request): share it.
+        # shield() so one caller giving up doesn't cancel the call for the others.
+        task = self._inflight.get(cache_key)
+        if task is None:
+            task = asyncio.create_task(self._call_tool(node, cfg, params, cache_key))
+            self._inflight[cache_key] = task
+            task.add_done_callback(lambda _: self._inflight.pop(cache_key, None))
+        return await asyncio.shield(task)
+
+    async def _call_tool(self, node: PlanNode, cfg: dict, params: Dict[str, Any], cache_key: str) -> Any:
         timeout_s = cfg.get("timeout_ms", 5_000) / 1_000
         cb = get_breaker(cfg.get("circuit_breaker", node.tool))
 

@@ -1,6 +1,7 @@
 const express = require("express")
 const cors = require("cors")
 const axios = require("axios")
+const { pipeline } = require("stream")
 
 const movieRoutes = require("./routes/movieRoutes")
 const userRoutes = require("./routes/userRoutes")
@@ -51,6 +52,56 @@ app.post("/api/query", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to process query",
+    })
+  }
+})
+
+const readJsonStream = async (stream) => {
+  let body = ""
+  for await (const chunk of stream) body += chunk
+  try {
+    return JSON.parse(body)
+  } catch {
+    return { success: false, error: body || "Failed to process query" }
+  }
+}
+
+// Streamed variant: Server-Sent Events piped through as they arrive (intent, results,
+// providers, synthesis), so the UI can render each stage without waiting for the last
+app.post("/api/query/stream", async (req, res) => {
+  const upstreamAbort = new AbortController()
+  res.on("close", () => upstreamAbort.abort()) // client went away: stop the upstream query too
+
+  try {
+    const upstream = await axios.post(`${AI_ORCHESTRATION_URL}/api/query/stream`, req.body, {
+      responseType: "stream",
+      timeout: 60_000,
+      signal: upstreamAbort.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+      },
+    })
+    res.status(upstream.status).set({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no", // keep nginx in front of the gateway from buffering events
+    })
+    res.flushHeaders()
+    // pipeline, not pipe: if the orchestrator dies mid-stream, pipe() would leave the client's
+    // connection open forever; pipeline() closes it, and the client sees the stream end early
+    pipeline(upstream.data, res, (err) => {
+      if (err && !upstreamAbort.signal.aborted) console.warn("[query/stream] Upstream stream failed:", err.message)
+    })
+  } catch (error) {
+    if (upstreamAbort.signal.aborted) return
+    if (error.response) {
+      // Validation errors etc. arrive before any event, as a normal JSON body
+      return res.status(error.response.status).json(await readJsonStream(error.response.data))
+    }
+    return res.status(error.code === "ECONNREFUSED" ? 503 : 500).json({
+      success: false,
+      error: error.code === "ECONNREFUSED" ? "AI orchestration service unavailable" : "Failed to process query",
     })
   }
 })

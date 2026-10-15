@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useSearchFilter } from "../context/SearchFilterContext"
 import api from "../api/axios"
 import { aiQuery } from "../api/query"
@@ -136,6 +136,11 @@ const SearchPage = () => {
     setPage(prev => prev + 1)
   }
 
+  // The Query Lab runs ?q= on open, so a search can continue there as a conversation
+  const queryLabLink = (label) => query.trim() && (
+    <Link to={`/query?q=${encodeURIComponent(query)}`} className="ai-handoff">✦ {label}</Link>
+  )
+
   const getSearchDescription = () => {
     const parts = []
     if (query) parts.push(`"${query}"`)
@@ -196,6 +201,7 @@ const SearchPage = () => {
         <div className="search-header">
           <h1>No Results Found</h1>
           <p>No movies found for {getSearchDescription()}.</p>
+          {queryLabLink("Ask the AI instead: describe what you want in your own words")}
           <div className="search-suggestions">
             <h3>Try:</h3>
             <ul>
@@ -218,6 +224,7 @@ const SearchPage = () => {
           Found {totalResults} movies {getSearchDescription()}
         </p>
         {aiInterpretation && <p className="search-description">Understood as: {aiInterpretation}</p>}
+        {aiInterpretation && queryLabLink("Refine this with follow-ups in Query Lab")}
       </div>
 
       <div className="search-results-section">

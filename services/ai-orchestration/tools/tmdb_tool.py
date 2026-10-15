@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-_BASE = "https://api.themoviedb.org/3"
+_BASE = "https://api.tmdb.org/3"
 _KEY = os.getenv("TMDB_API_KEY", "")
 
 # Shared client — created lazily, reused across calls
@@ -127,6 +127,65 @@ async def tmdb_discover(params: Dict[str, Any]) -> List[dict]:
     if not ok:
         raise batches[0]
     return [_norm(m) for batch in ok for m in batch][:limit]
+
+
+_DEPARTMENT = {"director": "Directing", "actor": "Acting"}
+_SELF_ROLES = {"self", "himself", "herself", "themselves"}
+
+
+def _in_filters(movie: dict, params: Dict[str, Any]) -> bool:
+    """The planner's genre / language / year / rating filters, applied to a filmography."""
+    wanted = genre_ids(params.get("genres"))
+    if wanted and not set(wanted) <= set(movie.get("genre_ids") or []):
+        return False
+    if params.get("language") and movie.get("original_language") != params["language"]:
+        return False
+    year = str(movie.get("release_date") or "")[:4]
+    if params.get("year_from") or params.get("year_to"):
+        if not year.isdigit():
+            return False
+        if (params.get("year_from") and int(year) < params["year_from"]) or \
+           (params.get("year_to") and int(year) > params["year_to"]):
+            return False
+    if params.get("min_rating") is not None and (movie.get("vote_average") or 0) < params["min_rating"]:
+        return False
+    return True
+
+
+async def tmdb_person_movies(params: Dict[str, Any]) -> List[dict]:
+    """A director's or actor's films. /search/movie only matches titles, so "Christopher Nolan
+    movies" found nothing there and the results were whatever semantic search returned."""
+    name = (params.get("name") or "").strip()
+    role = params.get("role", "director")
+    limit = int(params.get("limit", 20))
+    if not name:
+        return []
+
+    r = await _get_client().get("/search/person", params={"api_key": _KEY, "query": name, "include_adult": False})
+    r.raise_for_status()
+    people = r.json().get("results", [])
+    if not people:
+        return []
+    # Results are by popularity; prefer someone known for the asked role ("Ben Affleck" the director)
+    person = next((p for p in people[:3] if p.get("known_for_department") == _DEPARTMENT.get(role)), people[0])
+
+    r = await _get_client().get(f"/person/{person['id']}/movie_credits", params={"api_key": _KEY})
+    r.raise_for_status()
+    credits = r.json()
+    if role == "director":
+        films = [c for c in credits.get("crew", []) if c.get("job") == "Director"]
+    else:
+        # Documentaries list people as themselves; those aren't their films
+        films = [c for c in credits.get("cast", []) if str(c.get("character") or "").strip().lower() not in _SELF_ROLES]
+
+    seen: set = set()
+    out: List[dict] = []
+    for film in sorted(films, key=lambda f: f.get("vote_count") or 0, reverse=True):
+        if film.get("id") in seen or not _in_filters(film, params):
+            continue
+        seen.add(film.get("id"))
+        out.append(_norm(film))
+    return out[:limit]
 
 
 async def tmdb_trending(params: Dict[str, Any]) -> List[dict]:

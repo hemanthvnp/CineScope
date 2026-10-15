@@ -2,6 +2,10 @@ from __future__ import annotations
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, model_validator
 
+from models.intent import IntentName, QueryEntities
+
+MAX_SHOWN_IDS = 200
+
 
 class QueryOptions(BaseModel):
     max_results: int = Field(default=10, ge=1, le=50)
@@ -51,6 +55,21 @@ class QueryFilters(BaseModel):
         )
 
 
+class ConversationState(BaseModel):
+    """What a conversation's latest turn resolved to.
+
+    Returned with every response and sent back with the next message, so a follow-up like
+    "only on Netflix" can refine it. The server keeps no session: any instance can answer
+    any turn, and a restart doesn't lose the conversation.
+    """
+    query: str = Field(default="", max_length=500)
+    intent: IntentName
+    interpreted_as: str = Field(default="", max_length=500)
+    entities: QueryEntities = QueryEntities()
+    shown_ids: List[int] = Field(default_factory=list, max_length=MAX_SHOWN_IDS)
+    turn: int = Field(default=1, ge=1)
+
+
 class QueryRequest(BaseModel):
     q: str = Field(default="", max_length=500, description="Natural language movie query (optional if filters given)")
     userId: Optional[str] = None
@@ -58,6 +77,9 @@ class QueryRequest(BaseModel):
     context: Optional[QueryContext] = None
     filters: Optional[QueryFilters] = None
     options: QueryOptions = QueryOptions()
+    conversation: Optional[ConversationState] = Field(
+        default=None, description="The `conversation` of the previous response, to ask a follow-up",
+    )
 
     @model_validator(mode="after")
     def _need_query_or_filters(self):
@@ -94,6 +116,7 @@ class QueryMeta(BaseModel):
     personalized: bool
     intent: str
     interpreted_as: str
+    degraded: bool = False      # an LLM step failed and a fallback answered (never cached)
 
 
 class QueryResponse(BaseModel):
@@ -103,3 +126,4 @@ class QueryResponse(BaseModel):
     synthesis: Optional[str] = None
     results: List[MovieResult]
     meta: QueryMeta
+    conversation: Optional[ConversationState] = None

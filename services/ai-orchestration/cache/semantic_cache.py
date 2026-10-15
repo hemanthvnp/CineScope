@@ -4,6 +4,11 @@ Multi-tier cache:
   L2 — Redis with TTL        (~1-2 ms, optional)
 
 Falls back gracefully when Redis is unavailable.
+
+Responses are stored under two keys:
+  q: — the normalised query text, checked before the LLM call (exact repeats skip everything)
+  i: — the query's meaning (execution plan + filters), checked after the LLM call, so
+       differently worded queries that resolve to the same plan share one entry
 """
 from __future__ import annotations
 
@@ -97,17 +102,34 @@ async def cache_set(key: str, value: Any, ttl: int = 300) -> None:
             pass
 
 
+def normalise_query(query: str) -> str:
+    """'  90s Sci-Fi  movies? ' → '90s sci-fi movies'"""
+    return " ".join(query.lower().split()).rstrip("?!.")
+
+
+def canonical_params(params: dict) -> dict:
+    """Drop empty values: tools treat a missing param and None / "" / [] the same way."""
+    return {k: v for k, v in params.items() if v is not None and v != "" and v != []}
+
+
 def make_query_key(query: str, locale: str, user_segment: str = "anon", filters: Optional[dict] = None) -> str:
-    normalised = query.lower().strip()
     filter_part = json.dumps(filters, sort_keys=True, default=str) if filters else ""
     digest = hashlib.sha256(
-        f"{normalised}|{locale}|{user_segment}|{filter_part}".encode()
+        f"{normalise_query(query)}|{locale}|{user_segment}|{filter_part}".encode()
     ).hexdigest()[:20]
     return f"q:{digest}"
 
 
+def make_intent_key(signature: dict) -> str:
+    """Key a response by what the query means (plan + filters + options), not how it was worded."""
+    digest = hashlib.sha256(
+        json.dumps(signature, sort_keys=True, default=str).encode()
+    ).hexdigest()[:20]
+    return f"i:{digest}"
+
+
 def make_tool_key(tool: str, params: dict) -> str:
     digest = hashlib.md5(
-        json.dumps(params, sort_keys=True, default=str).encode()
+        json.dumps(canonical_params(params), sort_keys=True, default=str).encode()
     ).hexdigest()[:16]
     return f"t:{tool}:{digest}"
